@@ -30,11 +30,13 @@ part capacitor {
     pin B passive
     package chip footprint="Capacitor_SMD:C_0402_1005Metric" { pad A 1; pad B 2 }
 }
+
 design demo {
     place capacitor C1 bom_value="100nF, tested" manufacturer="Maker \"One\"" mpn="ABC" lcsc="C123"
     place capacitor C2 bom_value="100nF, tested" manufacturer="Maker \"One\"" mpn="ABC" lcsc="C123"
-    place capacitor C3 bom_value="100nF, tested" manufacturer="Maker \"One\"" mpn="ABC" lcsc="C456"
+    place capacitor C3 bom_value="100nF, tested" manufacturer="Maker \"One\"" mpn="ABC" lcsc="C123" hand=#true
 }
+
 "#,
         )],
     );
@@ -45,9 +47,31 @@ design demo {
     assert!(model.report.is_empty(), "{}", model.report.render());
     let (csv, report) = bom::csv(&lib, &model);
     assert!(report.is_empty(), "{}", report.render());
-    assert!(csv.starts_with("Refs,Quantity,Value,Footprint,MF,MPN,LCSC,Mouser,DigiKey\n"));
-    assert!(csv.contains("\"C1,C2\",\"2\",\"100nF, tested\",\"Capacitor_SMD:C_0402_1005Metric\",\"Maker \"\"One\"\"\",\"ABC\",\"C123\""), "{csv}");
-    assert!(csv.contains("\"C3\",\"1\",\"100nF, tested\",\"Capacitor_SMD:C_0402_1005Metric\",\"Maker \"\"One\"\"\",\"ABC\",\"C456\""), "{csv}");
+    assert!(csv.starts_with("Refs,Quantity,Value,Footprint,MF,MPN,LCSC,Mouser,DigiKey,Hand,DNP\n"));
+    assert!(csv.contains("\"C1,C2\",\"2\",\"100nF, tested\",\"Capacitor_SMD:C_0402_1005Metric\",\"Maker \"\"One\"\"\",\"ABC\",\"C123\",\"\",\"\",\"\",\"\""), "{csv}");
+    assert!(csv.contains("\"C3\",\"1\",\"100nF, tested\",\"Capacitor_SMD:C_0402_1005Metric\",\"Maker \"\"One\"\"\",\"ABC\",\"C123\",\"\",\"\",\"Yes\",\"Yes\""), "{csv}");
+}
+
+#[test]
+fn hand_placement_requires_a_boolean() {
+    let fx = Fixture::new(
+        "hand-boolean",
+        &[(
+            "board.kdl",
+            "part widget { reference U; pin P passive; package body footprint=\"Test:Widget\" { pad P 1 } }\ndesign demo { place widget U1 hand=\"yes\" }\n",
+        )],
+    );
+    let (lib, loaded) = Library::load(&fx.dir.join("board.kdl"), &Prefixes::default());
+    assert!(loaded.is_empty(), "{}", loaded.render());
+    let (file, design) = lib.designs()[0];
+    let model = elaborate(&lib, file, design);
+    assert!(model.report.has_errors());
+    assert!(
+        model
+            .report
+            .render()
+            .contains("`hand=` needs #true or #false")
+    );
 }
 
 /// A scratch directory holding the given files, loaded as a library.

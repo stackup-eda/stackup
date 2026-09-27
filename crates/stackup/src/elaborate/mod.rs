@@ -219,7 +219,7 @@ struct Builder<'a> {
     imperial: Option<String>,
 }
 
-const LANGUAGE_PROPS: [&str; 22] = [
+const LANGUAGE_PROPS: [&str; 23] = [
     "value",
     "intent",
     "note",
@@ -231,6 +231,7 @@ const LANGUAGE_PROPS: [&str; 22] = [
     "anchor",
     "spot",
     "bom_value",
+    "hand",
     "manufacturer",
     "mpn",
     "lcsc",
@@ -298,6 +299,7 @@ impl<'a> Builder<'a> {
             value: None,
             footprint: None,
             fields: HashMap::new(),
+            hand: false,
             intent: None,
             anchor: None,
             spot: None,
@@ -1230,6 +1232,10 @@ impl<'a> Builder<'a> {
                         let value = self.text_value(frame, &a.value);
                         self.instances[inst].fields.insert(a.key.clone(), value);
                     }
+                    "hand" => match self.resolve_value(frame, &a.value) {
+                        Value::Bool(hand) => self.instances[inst].hand = hand,
+                        _ => self.error(file, a.span, "`hand=` needs #true or #false"),
+                    },
                     "anchor" => {
                         let origin = if matches!(&a.value, Value::Name(n) if n == "anchor") {
                             self.frames[frame].anchor_origin.unwrap_or(frame)

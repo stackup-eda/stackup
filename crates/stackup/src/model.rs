@@ -25,6 +25,8 @@ pub struct Instance {
     pub footprint: Option<String>,
     /// Board-selected ordering and rating fields, overriding a library part's defaults.
     pub fields: HashMap<String, String>,
+    /// Installed by hand after outsourced assembly; retained in the purchasing BOM.
+    pub hand: bool,
     pub intent: Option<String>,
     /// Physical pad this part belongs beside, as `designator.pad` for KiCad.
     pub anchor: Option<String>,

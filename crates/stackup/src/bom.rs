@@ -13,7 +13,7 @@ use crate::{
 
 /// One row per unique purchasing choice. `Refs` contains its placed designators.
 pub fn csv(lib: &Library, model: &Model) -> (String, Report) {
-    type Choice = (String, String, String, String, String, String, String);
+    type Choice = (String, String, String, String, String, String, String, bool);
     let mut rows: BTreeMap<Choice, Vec<String>> = BTreeMap::new();
     let mut report = Report::default();
 
@@ -89,14 +89,16 @@ pub fn csv(lib: &Library, model: &Model) -> (String, Report) {
             field("lcsc"),
             field("mouser"),
             field("digikey"),
+            inst.hand,
         );
         rows.entry(choice)
             .or_default()
             .push(inst.designator.clone().unwrap_or_else(|| inst.path.clone()));
     }
 
-    let mut output = String::from("Refs,Quantity,Value,Footprint,MF,MPN,LCSC,Mouser,DigiKey\n");
-    for ((value, footprint, mf, mpn, lcsc, mouser, digikey), mut refs) in rows {
+    let mut output =
+        String::from("Refs,Quantity,Value,Footprint,MF,MPN,LCSC,Mouser,DigiKey,Hand,DNP\n");
+    for ((value, footprint, mf, mpn, lcsc, mouser, digikey, hand), mut refs) in rows {
         refs.sort();
         let fields = [
             refs.join(","),
@@ -108,6 +110,8 @@ pub fn csv(lib: &Library, model: &Model) -> (String, Report) {
             lcsc,
             mouser,
             digikey,
+            if hand { "Yes" } else { "" }.to_string(),
+            if hand { "Yes" } else { "" }.to_string(),
         ];
         output.push_str(&fields.map(|field| quote(&field)).join(","));
         output.push('\n');

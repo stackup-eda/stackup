@@ -1,6 +1,6 @@
 [package]
 name = "stackup-eda"
-version = "0.1.2"
+version = "0.1.3"
 edition.workspace = true
 rust-version.workspace = true
 description = "Elaborates a stackup design and writes what a PCB tool imports"
