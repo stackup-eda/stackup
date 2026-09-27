@@ -148,7 +148,7 @@ fn components(lib: &Library, model: &Model, report: &mut Report) -> List {
         let (line, _) = source.line_col(inst.span.offset);
         comp.push(property(
             "Stackup Source",
-            &format!("{}:{line}", source.name),
+            &format!("{}:{line}", lib.source_label(inst.file)),
         ));
         if !inst.notes.is_empty() {
             comp.push(property("Stackup Why", &inst.notes.join("; ")));

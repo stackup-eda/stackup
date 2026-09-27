@@ -263,6 +263,34 @@ impl Library {
         &self.files[file].source
     }
 
+    /// A source label that is stable across checkouts and the pinned library cache.
+    pub fn source_label(&self, file: FileId) -> String {
+        let path = &self.files[file].path;
+        let library = self
+            .prefixes
+            .roots
+            .iter()
+            .filter_map(|(name, root)| {
+                let dir = root.dir.canonicalize().unwrap_or_else(|_| root.dir.clone());
+                path.strip_prefix(&dir)
+                    .ok()
+                    .map(|relative| (name, relative, dir.components().count()))
+            })
+            .max_by_key(|(_, _, depth)| *depth);
+        if let Some((name, relative, _)) = library {
+            return format!("@{name}/{}", relative.display()).replace('\\', "/");
+        }
+        if let Some(project) = &self.prefixes.project
+            && let Ok(relative) = path.strip_prefix(project)
+        {
+            return relative.display().to_string().replace('\\', "/");
+        }
+        path.file_name()
+            .unwrap_or(path.as_os_str())
+            .to_string_lossy()
+            .into_owned()
+    }
+
     /// Every design in the root file.
     pub fn designs(&self) -> Vec<(FileId, &Block)> {
         let Some(root) = self.files.first() else {

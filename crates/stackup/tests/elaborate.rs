@@ -70,6 +70,7 @@ part capacitor {
         pad B 2
     }
 }
+
 design demo {
     place capacitor Caccel value="100nF" bom_value="100nF | CL05B104KO5NNNC | Samsung | 0402" \
         manufacturer="Samsung" mpn="CL05B104KO5NNNC" lcsc=C1525 \
@@ -98,6 +99,46 @@ design demo {
     ] {
         assert!(text.contains(expected), "missing {expected}: {text}");
     }
+}
+
+#[test]
+fn netlist_source_labels_are_independent_of_library_checkout_paths() {
+    let fx = Fixture::new(
+        "portable-sources",
+        &[
+            (
+                "stackup/parts.kdl",
+                r#"
+part resistor {
+    symbol "Device:R"
+    reference R
+    pin A passive
+    package chip footprint="Resistor_SMD:R_0402_1005Metric" { pad A 1 }
+}
+block wrapper { place resistor as=self }
+"#,
+            ),
+            (
+                "board.kdl",
+                "use \"@stackup/parts\"\ndesign board { place wrapper R }\n",
+            ),
+        ],
+    );
+    let (lib, loaded) = Library::load(
+        &fx.dir.join("board.kdl"),
+        &Prefixes::single("stackup", fx.dir.join("stackup")),
+    );
+    assert!(loaded.is_empty(), "{}", loaded.render());
+    assert_eq!(lib.source_label(0), "board.kdl");
+    assert_eq!(lib.source_label(1), "@stackup/parts.kdl");
+    let (file, design) = lib.designs()[0];
+    let model = elaborate(&lib, file, design);
+    let (netlist, report) = netlist::kicad(&lib, &model);
+    assert!(report.is_empty(), "{}", report.render());
+    assert!(
+        netlist.contains("(value \"@stackup/parts.kdl:"),
+        "{netlist}"
+    );
 }
 
 /// Every net as `name: D.pin D.pin …`, pins sorted, for comparing.
