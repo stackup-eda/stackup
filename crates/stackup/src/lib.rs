@@ -13,6 +13,7 @@
 //! - Elaboration ends by evaluating the facts, derived values, assertions and requirements over
 //!   the finished nets ([`expr`], [`quantity`]), and reports what does not hold.
 
+pub mod cli;
 pub mod elaborate;
 pub mod expr;
 pub mod git_cache;
