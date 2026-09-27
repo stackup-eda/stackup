@@ -1,12 +1,12 @@
 //! Each statement of the format, read from a snippet; what a wrong one reports; and the edits.
 
-use stackup_kdl::{
+use stackup_eda_parser::{
     Document, Value,
     ast::{BlockItem, BlockKind, MetaKey, PartItem, PortItem, Rule, SideRole},
     emit,
 };
 
-fn read(text: &str) -> stackup_kdl::ast::File {
+fn read(text: &str) -> stackup_eda_parser::ast::File {
     match Document::read("test.kdl", text) {
         Ok(f) => f,
         Err(e) => panic!("{}", e.render()),
@@ -156,7 +156,7 @@ part ne555 {
     let rest = &pins[1].requires[0];
     assert_eq!(
         (rest.aspect, rest.fact.as_str()),
-        (stackup_kdl::ast::Aspect::Net, "rest")
+        (stackup_eda_parser::ast::Aspect::Net, "rest")
     );
     assert_eq!(rest.value, None);
     assert_eq!(rest.props[0].key, "not");
@@ -227,9 +227,9 @@ part ne555 {
     assert_eq!(ports[2].requires().next().unwrap().fact, "break");
     assert_eq!(
         ports[2].requires().next().unwrap().aspect,
-        stackup_kdl::ast::Aspect::Signal
+        stackup_eda_parser::ast::Aspect::Signal
     );
-    assert_eq!(facts[0].aspect, stackup_kdl::ast::Aspect::Net);
+    assert_eq!(facts[0].aspect, stackup_eda_parser::ast::Aspect::Net);
 
     let tim1 = part.peripherals().next().unwrap();
     assert_eq!(tim1.kind, "timer");
@@ -314,7 +314,7 @@ design blinky {
     assert_eq!(lines[0].ty.as_deref(), Some("pwm"));
     assert!(lines[1].optional);
     assert!(
-        matches!(&lines[1].items[0], stackup_kdl::ast::LineItem::Match(m) if m.target.to_string() == "uart.cts")
+        matches!(&lines[1].items[0], stackup_eda_parser::ast::LineItem::Match(m) if m.target.to_string() == "uart.cts")
     );
 
     let decouple = file.blocks().next().unwrap();
@@ -718,7 +718,7 @@ design demo {
     // Stale spans are refused, not misapplied.
     let mut stale = Document::parse("demo.kdl", text).unwrap();
     let err = stale
-        .set_property(stackup_kdl::Span::new(3, 0), "x", &Value::Null)
+        .set_property(stackup_eda_parser::Span::new(3, 0), "x", &Value::Null)
         .unwrap_err();
     assert!(err.render().contains("no statement starts here"));
     // Removing takes the comment above along with the statement.
@@ -732,8 +732,8 @@ design demo {
 
 #[test]
 fn a_new_file_from_the_model() {
-    use stackup_kdl::ast::*;
-    use stackup_kdl::{Property, Reference, Span};
+    use stackup_eda_parser::ast::*;
+    use stackup_eda_parser::{Property, Reference, Span};
     let s = Span::default();
     let file = File {
         items: vec![

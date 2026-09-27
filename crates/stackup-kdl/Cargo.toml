@@ -6,10 +6,7 @@ rust-version.workspace = true
 description = "Reads and writes stackup's KDL design format"
 license = "MIT"
 repository = "https://github.com/stackup-eda/stackup"
-readme = "../../README.md"
-
-[lib]
-name = "stackup_kdl"
+readme = "README.md"
 
 [dependencies]
 kdl = "6.7"

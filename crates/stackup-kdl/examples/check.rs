@@ -2,7 +2,7 @@
 //!
 //!     cargo run -p stackup-eda-parser --example check -- path/to/design.kdl
 
-use stackup_kdl::Document;
+use stackup_eda_parser::Document;
 
 fn main() {
     let mut bad = false;

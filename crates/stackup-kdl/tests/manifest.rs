@@ -1,6 +1,6 @@
 //! Reading a `manifest.kdl`.
 
-use stackup_kdl::{
+use stackup_eda_parser::{
     Document,
     manifest::{LibrarySource, Manifest},
 };
