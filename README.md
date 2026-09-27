@@ -2,7 +2,7 @@
 
 stackup is a declarative electronics design tool. A design written in [KDL v2](https://kdl.dev) states the parts, reusable circuits, connections, and constraints of a board. The CLI checks those statements together and exports the result for KiCad. It validates choices made by the design; it does not choose components or pins on the designer's behalf.
 
-This repository is the KDL engine and CLI. Reusable parts live in the separate [stackup library](https://github.com/stackup-eda/library). The [ARC KDL designs](https://github.com/stackup-eda/arc-kdl) are one set of boards built with it.
+This repository is the KDL engine and CLI. Reusable parts live in the separate [stackup library](https://github.com/stackup-eda/library). The [ARC KDL designs](https://github.com/alxhub/arc) are one set of boards built with it.
 
 ## Start here
 
