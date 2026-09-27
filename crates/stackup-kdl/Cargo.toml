@@ -1,0 +1,10 @@
+[package]
+name = "stackup-kdl"
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+description = "Reads and writes stackup's KDL design format"
+
+[dependencies]
+kdl = "6.7"
+miette = { version = "7.6", default-features = false, features = ["fancy-no-syscall"] }

@@ -1,0 +1,10 @@
+[package]
+name = "stackup"
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+description = "Elaborates a stackup design and writes what a PCB tool imports"
+
+[dependencies]
+stackup-kdl = { path = "../stackup-kdl" }
+miette = { version = "7.6", default-features = false, features = ["fancy-no-syscall"] }
