@@ -23,6 +23,8 @@ pub struct Instance {
     pub reference_prefix: Option<String>,
     pub value: Option<String>,
     pub footprint: Option<String>,
+    /// Board-selected ordering and rating fields, overriding a library part's defaults.
+    pub fields: HashMap<String, String>,
     pub intent: Option<String>,
     /// Physical pad this part belongs beside, as `designator.pad` for KiCad.
     pub anchor: Option<String>,

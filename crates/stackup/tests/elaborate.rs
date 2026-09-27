@@ -51,6 +51,55 @@ impl Drop for Fixture {
     }
 }
 
+#[test]
+fn placement_selects_ordering_and_rating_without_a_part_variant() {
+    let fx = Fixture::new(
+        "placement-stock",
+        &[(
+            "board.kdl",
+            r#"
+part capacitor {
+    symbol "Device:C"
+    reference C
+    manufacturer "Generic"
+    order mpn="BASE"
+    pin A passive
+    pin B passive
+    package chip footprint="Capacitor_SMD:C_0402_1005Metric" {
+        pad A 1
+        pad B 2
+    }
+}
+design demo {
+    place capacitor Caccel value="100nF" bom_value="100nF | CL05B104KO5NNNC | Samsung | 0402" \
+        manufacturer="Samsung" mpn="CL05B104KO5NNNC" lcsc=C1525 \
+        series="CL05" voltage="16V" dielectric="X7R"
+}
+"#,
+        )],
+    );
+    let (lib, loaded) = Library::load(
+        &fx.dir.join("board.kdl"),
+        &Prefixes::single("stackup", fx.dir.join("stackup")),
+    );
+    assert!(loaded.is_empty(), "{}", loaded.render());
+    let (file, design) = lib.designs()[0];
+    let model = elaborate(&lib, file, design);
+    assert!(model.report.is_empty(), "{}", model.report.render());
+    let (text, report) = netlist::kicad(&lib, &model);
+    assert!(report.is_empty(), "{}", report.render());
+    for expected in [
+        "(value \"100nF | CL05B104KO5NNNC | Samsung | 0402\")",
+        "(name \"MF\")\n\t\t\t\t(value \"Samsung\")",
+        "(name \"Manufacturer_Part_Number\")\n\t\t\t\t(value \"CL05B104KO5NNNC\")",
+        "(name \"LCSC\")\n\t\t\t\t(value \"C1525\")",
+        "(name \"Voltage\")\n\t\t\t\t(value \"16V\")",
+        "(name \"Dielectric\")\n\t\t\t\t(value \"X7R\")",
+    ] {
+        assert!(text.contains(expected), "missing {expected}: {text}");
+    }
+}
+
 /// Every net as `name: D.pin D.pin …`, pins sorted, for comparing.
 fn nets(model: &Model) -> HashMap<String, Vec<String>> {
     model
@@ -535,6 +584,7 @@ block checked {
         when "rating > 1A"
     }
 }
+
 design board {
     place checked c rating="2A"
 }
@@ -551,6 +601,90 @@ design board {
             .count(),
         1
     );
+}
+
+#[test]
+fn placement_acknowledges_only_the_selected_requirement() {
+    let fx = Fixture::new(
+        "ignore-requirement",
+        &[(
+            "board.kdl",
+            r#"
+part led {
+    pin V power_in
+    port vdd type=terminal pin=V {
+        require net.voltage min="3.7V"
+    }
+}
+design board {
+    place led status { ignore "vdd.net.voltage" reason="bench verified" }
+    place led other
+    circuit "status.V" "other.V"
+    set "status.V" net.voltage "3.3V"
+}
+"#,
+        )],
+    );
+    let model = fx.model("board.kdl", "board");
+    assert!(
+        model
+            .report
+            .messages()
+            .iter()
+            .any(|m| m.contains("acknowledged: bench verified")),
+        "{}",
+        model.report.render()
+    );
+    assert!(
+        model
+            .report
+            .messages()
+            .iter()
+            .any(|m| m.contains("other") && m.contains("requires")),
+        "{}",
+        model.report.render()
+    );
+    assert!(model.report.has_errors());
+}
+
+#[test]
+fn placement_ignore_matches_assertion_and_rejects_stale_selector() {
+    let fx = Fixture::new(
+        "ignore-assertion",
+        &[(
+            "board.kdl",
+            r#"
+block checked {
+    param rating current
+    assert "rating <= 1A" message="over rating"
+    assert "rating <= 0.5A" message="other failure"
+}
+design board {
+    place checked c rating="2A" {
+        ignore "assert:rating <= 1A" reason="tested"
+        ignore "assert:old expression" reason="stale"
+    }
+}
+"#,
+        )],
+    );
+    let model = fx.model("board.kdl", "board");
+    let messages = model.report.messages();
+    assert!(
+        messages
+            .iter()
+            .any(|m| m == "over rating (acknowledged: tested)"),
+        "{messages:?}"
+    );
+    assert!(
+        messages.iter().any(|m| m == "other failure"),
+        "{messages:?}"
+    );
+    assert!(
+        messages.iter().any(|m| m.contains("matches no check")),
+        "{messages:?}"
+    );
+    assert!(model.report.has_errors());
 }
 
 const PASSIVES: &str = r#"

@@ -542,6 +542,28 @@ fn quoted_and_bare_are_kept_apart() {
 }
 
 #[test]
+fn placement_ignore_round_trips_and_requires_reason() {
+    let source = "design board {\n    place led status {\n        ignore vdd.net.voltage reason=\"bench verified\"\n    }\n}\n";
+    let file = read(source);
+    assert_eq!(
+        file.designs()
+            .next()
+            .unwrap()
+            .places()
+            .next()
+            .unwrap()
+            .ignores[0]
+            .target,
+        "vdd.net.voltage"
+    );
+    assert_eq!(emit(&file), source);
+    one_error(
+        "design board { place led status { ignore \"vdd.net.voltage\" } }",
+        "needs a nonempty `reason=`",
+    );
+}
+
+#[test]
 fn emitting() {
     let file = read(
         r#"
@@ -728,6 +750,7 @@ fn a_new_file_from_the_model() {
                         name: Some("V5".into()),
                         args: vec![Property::new("voltage", "5V")],
                         features: vec![],
+                        ignores: vec![],
                         span: s,
                     }),
                     BlockItem::Place(Place {
@@ -739,6 +762,7 @@ fn a_new_file_from_the_model() {
                             Property::new("value", "100nF"),
                         ],
                         features: vec![],
+                        ignores: vec![],
                         span: s,
                     }),
                     BlockItem::Circuit(Circuit {

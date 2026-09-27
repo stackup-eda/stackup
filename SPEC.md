@@ -362,10 +362,21 @@ declare several designs.
 ### 6.2 Placement
 
 ```kdl
-place <part-or-block> <name> [<arg>=<value> …] [{ with <feature> … }]
+place <part-or-block> <name> [<arg>=<value> …] [{ with <feature> …; ignore <selector> reason="<why>" … }]
 ```
 
 A placement instantiates a part or block at `<name>`, composed onto the enclosing path.
+
+An `ignore` child acknowledges one check on that placement. Its selector is an exact check
+identity, not a regular expression or a diagnostic message. For a port or pin requirement use
+`<port-or-pin>.<aspect>.<fact>`, for example `ignore vdd.net.voltage reason="tested at 3.3 V"`.
+For a body assertion use `assert:<expression>`; for a port assertion use
+`<port>.assert:<expression>`. Quote selectors containing spaces. The assertion expression must
+match the declaration exactly. `reason=` is required. A failing acknowledged check is reported
+as a note with the reason and its supporting facts; it does not stop evaluation of other checks.
+An ignore selector that matches no check is an error, so changed library checks cannot silently
+leave stale acknowledgements. The selector is scoped to this placement's own checks, not those of
+its child placements.
 
 Its properties are **arguments**:
 
@@ -378,9 +389,17 @@ Its properties are **arguments**:
 Wiring at placement is allowed and never required: every port argument can instead be written as
 the `circuit` or `connect` it stands for.
 
-The generic parts take the language properties `value=`, `intent=` and `note=`: the part's value,
-what it is placed to do (`decouple`, `bypass`, `bulk`, `filter`, `pull-up`, `pull-down`,
-`timing`, `series`, `divider`), and a note recorded with it. Any placement takes `note=`, and two
+Any part placement may state its selected value, footprint and purchasing details without a
+new part declaration. `manufacturer=`, `mpn=`, `lcsc=`, `mouser=`, `digikey=`, and `series=`
+override the library part's corresponding defaults for that instance. `voltage=`,
+`dissipation=`, `current=`, `tolerance=`, and `dielectric=` record the selected rating or grade
+on the exported PCB footprint. `value=` is the component's electrical value; `bom_value=` can
+give KiCad's Value field a fuller assembly string when the fab does not export purchasing fields.
+These choices do not change the library part's pins or behavior.
+
+The language properties `intent=` and `note=` state what a part is placed to do
+(`decouple`, `bypass`, `bulk`, `filter`, `pull-up`, `pull-down`, `timing`, `series`, `divider`)
+and record a note. Any placement takes `note=`, and two
 properties about what the silkscreen prints: `reference=<prefix>` (`LED`, numbered in placement
 order — `LED1`, `LED2`) and `designator=<word>` (`PXL`, whole, for a part there is one of). A
 designator is an export artifact; nothing in a design refers to a part by one.

@@ -213,6 +213,18 @@ impl<'a> Checker<'_, 'a> {
                 }
             }
         }
+        for i in &self.b.ignores {
+            if !i.matched {
+                self.b.report.error(
+                    self.b.lib.source(i.file),
+                    i.span,
+                    format!(
+                        "ignore selector `{}` matches no check on this placement",
+                        i.target
+                    ),
+                );
+            }
+        }
 
         // Every fact stated anywhere is evaluated once, so a conflict nobody reads and an
         // expression nobody uses are still reported.
@@ -795,6 +807,16 @@ impl<'a> Checker<'_, 'a> {
 
     fn requirement(&mut self, r: &Requirement) {
         let file = r.file;
+        let (inst, check_name) = match &r.on {
+            ReqOn::Port { inst, port, .. } => (*inst, port.as_str()),
+            ReqOn::Pin { inst, pin, .. } => (*inst, pin.as_str()),
+        };
+        let selector = format!(
+            "{check_name}.{}.{}",
+            r.require.aspect.name(),
+            r.require.fact
+        );
+        let acknowledged = self.acknowledgement(inst, &selector);
         let (subject, terminals): (String, Vec<Terminal>) = match &r.on {
             ReqOn::Port { inst, port, lines } => {
                 let non_return: Vec<Terminal> = lines
@@ -923,10 +945,19 @@ impl<'a> Checker<'_, 'a> {
             Ok(false) => {
                 let mut finding = Finding::new(
                     &self.source(file),
-                    Diagnostic::error(
-                        req.span,
-                        format!("{subject} requires {want}, and its net is {}", value.val),
-                    ),
+                    match &acknowledged {
+                        Some(reason) => Diagnostic::note(
+                            req.span,
+                            format!(
+                                "{subject} requires {want}, and its net is {} (acknowledged: {reason})",
+                                value.val
+                            ),
+                        ),
+                        None => Diagnostic::error(
+                            req.span,
+                            format!("{subject} requires {want}, and its net is {}", value.val),
+                        ),
+                    },
                 );
                 for o in &value.trace.from {
                     finding = finding.with_related(Finding::new(
@@ -952,6 +983,12 @@ impl<'a> Checker<'_, 'a> {
     }
 
     fn assertion(&mut self, frame: usize, port: Option<(usize, String)>, a: &Assert, file: FileId) {
+        let inst = self.b.frames[frame].inst;
+        let selector = match &port {
+            Some((_, name)) => format!("{name}.assert:{}", a.expr),
+            None => format!("assert:{}", a.expr),
+        };
+        let acknowledged = self.acknowledgement(inst, &selector);
         let where_ = match &port {
             Some((inst, p)) => format!(" on {}.{p}", self.describe_inst(*inst)),
             None => String::new(),
@@ -993,8 +1030,15 @@ impl<'a> Checker<'_, 'a> {
                 }
                 Val::Bool(false) => {
                     let text = message(self);
-                    let mut finding =
-                        Finding::new(&self.source(file), Diagnostic::error(a.span, text));
+                    let mut finding = Finding::new(
+                        &self.source(file),
+                        match &acknowledged {
+                            Some(reason) => {
+                                Diagnostic::note(a.span, format!("{text} (acknowledged: {reason})"))
+                            }
+                            None => Diagnostic::error(a.span, text),
+                        },
+                    );
                     for o in &v.trace.from {
                         finding = finding.with_related(Finding::new(
                             &self.source(o.file),
@@ -1014,6 +1058,17 @@ impl<'a> Checker<'_, 'a> {
                 ),
             },
         }
+    }
+
+    fn acknowledgement(&mut self, inst: usize, selector: &str) -> Option<String> {
+        self.b
+            .ignores
+            .iter_mut()
+            .find(|i| i.inst == inst && i.target == selector)
+            .map(|i| {
+                i.matched = true;
+                i.reason.clone()
+            })
     }
 }
 

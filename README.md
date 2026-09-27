@@ -12,7 +12,8 @@ This repository is the KDL engine and CLI. Reusable parts live in the separate [
 
 ## Build and check a design
 
-The Rust workspace contains the `stackup` CLI and `stackup-kdl` parser. Build and test it with:
+The Rust workspace publishes `stackup-eda` (the `stackup` CLI and engine library) and
+`stackup-eda-parser` (the KDL syntax library). Build and test it with:
 
 ```sh
 cargo test --workspace

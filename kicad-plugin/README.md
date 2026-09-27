@@ -2,7 +2,7 @@
 
 The PCB editor has three stackup actions:
 
-- **Sync PCB from stackup** exports the linked KDL design and updates footprints, pads, and nets. Existing placement and routing are retained.
+- **Sync PCB from stackup** exports the linked KDL design and updates electrical footprints, pads, and nets. Existing placement, routing, and KiCad `board_only` footprints are retained.
 - **Repeat arrangement** copies selected footprints and connected copper to sibling instances identified by their `Stackup Path` fields.
 - **Place at anchor pad** uses `Stackup Anchor`, `Stackup Spot`, `Stackup Pours`, and `Stackup Vias` fields already on footprints. KDL `anchor=host.PIN` on a part exports the host's physical pad to `Stackup Anchor`; optional `spot="dx dy rotation"` exports an exact offset. KDL does not emit pours or vias yet.
 

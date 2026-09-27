@@ -1,6 +1,6 @@
 //! Reads every file given and reports what it could not read.
 //!
-//!     cargo run -p stackup-kdl --example check -- path/to/design.kdl
+//!     cargo run -p stackup-eda-parser --example check -- path/to/design.kdl
 
 use stackup_kdl::Document;
 

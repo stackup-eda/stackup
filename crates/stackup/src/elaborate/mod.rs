@@ -39,6 +39,7 @@ pub fn elaborate(lib: &Library, file: FileId, design: &Block) -> Model {
         contributions: Vec::new(),
         returns: HashSet::new(),
         requirements: Vec::new(),
+        ignores: Vec::new(),
         pending_notes: Vec::new(),
         pending_values: Vec::new(),
         pending_anchors: Vec::new(),
@@ -148,6 +149,15 @@ struct Requirement {
     file: FileId,
 }
 
+struct IgnoreCheck {
+    inst: usize,
+    target: String,
+    reason: String,
+    file: FileId,
+    span: Span,
+    matched: bool,
+}
+
 enum ReqOn {
     Port {
         inst: usize,
@@ -196,6 +206,7 @@ struct Builder<'a> {
     /// The `gnd` line of every power port: a return, which takes no voltage and rests low.
     returns: HashSet<Terminal>,
     requirements: Vec<Requirement>,
+    ignores: Vec<IgnoreCheck>,
     /// Notes to render once facts are known: the instance, the frame, the note as written.
     pending_notes: Vec<(usize, usize, Value, Span)>,
     /// Part values may refer to derives, so resolve them after facts are available.
@@ -208,7 +219,7 @@ struct Builder<'a> {
     imperial: Option<String>,
 }
 
-const LANGUAGE_PROPS: [&str; 10] = [
+const LANGUAGE_PROPS: [&str; 22] = [
     "value",
     "intent",
     "note",
@@ -219,6 +230,18 @@ const LANGUAGE_PROPS: [&str; 10] = [
     "as",
     "anchor",
     "spot",
+    "bom_value",
+    "manufacturer",
+    "mpn",
+    "lcsc",
+    "mouser",
+    "digikey",
+    "series",
+    "voltage",
+    "dissipation",
+    "current",
+    "tolerance",
+    "dielectric",
 ];
 
 impl<'a> Builder<'a> {
@@ -228,6 +251,31 @@ impl<'a> Builder<'a> {
 
     fn warning(&mut self, file: FileId, span: Span, message: impl Into<String>) {
         self.report.warning(self.lib.source(file), span, message);
+    }
+
+    fn add_ignores(&mut self, inst: usize, file: FileId, p: &Place) {
+        for i in &p.ignores {
+            if self
+                .ignores
+                .iter()
+                .any(|old| old.inst == inst && old.target == i.target)
+            {
+                self.error(
+                    file,
+                    i.span,
+                    format!("duplicate ignore selector `{}`", i.target),
+                );
+                continue;
+            }
+            self.ignores.push(IgnoreCheck {
+                inst,
+                target: i.target.clone(),
+                reason: i.reason.clone(),
+                file,
+                span: i.span,
+                matched: false,
+            });
+        }
     }
 
     fn new_instance(
@@ -249,6 +297,7 @@ impl<'a> Builder<'a> {
             reference_prefix: None,
             value: None,
             footprint: None,
+            fields: HashMap::new(),
             intent: None,
             anchor: None,
             spot: None,
@@ -1081,6 +1130,7 @@ impl<'a> Builder<'a> {
             file,
             p.span,
         );
+        self.add_ignores(inst, file, p);
         if let Some(n) = &name {
             self.children.insert((parent, n.clone()), inst);
             self.frames[frame]
@@ -1173,6 +1223,12 @@ impl<'a> Builder<'a> {
                         .push((inst, frame, a.value.clone(), a.span)),
                     "footprint" => {
                         self.instances[inst].footprint = Some(self.text_value(frame, &a.value))
+                    }
+                    "bom_value" | "manufacturer" | "mpn" | "lcsc" | "mouser" | "digikey"
+                    | "series" | "voltage" | "dissipation" | "current" | "tolerance"
+                    | "dielectric" => {
+                        let value = self.text_value(frame, &a.value);
+                        self.instances[inst].fields.insert(a.key.clone(), value);
                     }
                     "anchor" => {
                         let origin = if matches!(&a.value, Value::Name(n) if n == "anchor") {
@@ -1392,6 +1448,7 @@ impl<'a> Builder<'a> {
         }
         let path = self.compose(parent, name);
         let inst = self.new_instance(path, Some(parent), Kind::Block { decl }, file, p.span);
+        self.add_ignores(inst, file, p);
         self.children.insert((parent, name.clone()), inst);
         self.frames[frame]
             .names

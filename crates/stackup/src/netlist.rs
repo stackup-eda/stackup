@@ -57,8 +57,10 @@ fn components(lib: &Library, model: &Model, report: &mut Report) -> List {
         let mut comp = List::named("comp");
         comp.field("ref", &designator);
         let value = inst
-            .value
-            .clone()
+            .fields
+            .get("bom_value")
+            .cloned()
+            .or_else(|| inst.value.clone())
             .or_else(|| {
                 part.meta_in(pkg, MetaKey::Value)
                     .and_then(|v| v.as_str().map(str::to_string))
@@ -109,6 +111,37 @@ fn components(lib: &Library, model: &Model, report: &mut Report) -> List {
                 .unwrap_or(""),
         );
         comp.push(libsource);
+
+        let order = part.order_in(pkg);
+        for (key, field) in [
+            ("manufacturer", "MF"),
+            ("mpn", "Manufacturer_Part_Number"),
+            ("lcsc", "LCSC"),
+            ("mouser", "Mouser"),
+            ("digikey", "DigiKey"),
+            ("series", "Series"),
+            ("voltage", "Voltage"),
+            ("dissipation", "Dissipation"),
+            ("current", "Current"),
+            ("tolerance", "Tolerance"),
+            ("dielectric", "Dielectric"),
+        ] {
+            let default = if key == "manufacturer" {
+                part.meta(MetaKey::Manufacturer).and_then(|v| v.as_str())
+            } else {
+                order.and_then(|o| {
+                    o.props
+                        .iter()
+                        .find(|p| p.key == key)
+                        .and_then(|p| p.value.as_str())
+                })
+            };
+            if let Some(value) = inst.fields.get(key).map(String::as_str).or(default)
+                && !value.is_empty()
+            {
+                comp.push(property(field, value));
+            }
+        }
 
         comp.push(property("Stackup Path", &inst.path));
         let source = lib.source(inst.file);

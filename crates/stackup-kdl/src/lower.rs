@@ -910,6 +910,7 @@ impl Cx {
         self.no_more_args(n, 2);
         let args = self.properties(n);
         let mut features = Vec::new();
+        let mut ignores = Vec::new();
         for c in children(n) {
             match name(c) {
                 "with" | "without" => {
@@ -923,6 +924,26 @@ impl Cx {
                         span: span(c),
                     }));
                 }
+                "ignore" => {
+                    let target = self.text_arg(c, 0, "check selector");
+                    self.no_more_args(c, 1);
+                    let props = self.known_properties(c, &["reason"]);
+                    self.no_children(c);
+                    let reason = props
+                        .iter()
+                        .find(|p| p.key == "reason")
+                        .and_then(|p| p.value.as_str());
+                    if reason.is_none_or(|s| s.trim().is_empty()) {
+                        self.error(span(c), "`ignore` needs a nonempty `reason=` string");
+                    }
+                    if let (Some(target), Some(reason)) = (target, reason) {
+                        ignores.push(Ignore {
+                            target,
+                            reason: reason.to_string(),
+                            span: span(c),
+                        });
+                    }
+                }
                 _ => self.unknown(c, "a placement"),
             }
         }
@@ -931,6 +952,7 @@ impl Cx {
             name: place_name,
             args,
             features,
+            ignores,
             span: span(n),
         })
     }

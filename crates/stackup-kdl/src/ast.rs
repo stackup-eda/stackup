@@ -671,6 +671,15 @@ pub struct Place {
     /// Parameters, ports and language properties (`value=`, `intent=`, `note=`, `as=`), as written.
     pub args: Vec<Property>,
     pub features: Vec<Feature>,
+    pub ignores: Vec<Ignore>,
+    pub span: Span,
+}
+
+/// An exact, placement-scoped acknowledgement of a requirement or assertion.
+#[derive(Clone, Debug, PartialEq)]
+pub struct Ignore {
+    pub target: String,
+    pub reason: String,
     pub span: Span,
 }
 

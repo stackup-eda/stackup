@@ -42,8 +42,9 @@ and leaves here; when a gap is closed its bullet is deleted.
   KDL will not take bare; writing the statement inside the scope avoids the quoting. Whether a
   statement may reach into a placement's children at all (`lamps/l3.gate`) is unsettled; the
   port re-exports through the block's own ports instead.
-- **A shunt's tolerance.** It is the one number that says what a reading is worth, and there is
-  no `tolerance=` on a placement to carry it. It sits in a note.
+- **A shunt's tolerance.** A placement can now carry `tolerance=` into the KiCad BOM fields.
+  Deriving measurement accuracy from it and checking that against a circuit requirement are
+  still open.
 - **What a board says about a sheet's part.** A designator is a board's to choose and a sheet's
   part to carry, and a sheet placed on several boards has no word for it. There is no `designate`
   by path, so a sheet that belongs to one board states its designators itself, and one shared by
@@ -53,7 +54,8 @@ and leaves here; when a gap is closed its bullet is deleted.
 - **A placement is an aspect.** A segment, a net and a signal are what a fact about the
   *wiring* belongs to; a placement is what a fact about the *thing* belongs to, and the language
   properties a `place` takes today — `value`, `footprint`, `intent`, `note`, `reference`,
-  `designator` — are its facts, spelled as arguments because nothing else could state them. As
+  `designator`, and purchasing and rating fields — are its facts, spelled as arguments because
+  nothing else could state them. As
   an aspect they are stated where any fact is: `set R placement.footprint "R_0805"` in the block
   that knows the watts, the same statement from the board that knows the layout, and `derive`
   and `assert` read them (`R.footprint`, a dissipation against the body's rating). Several open

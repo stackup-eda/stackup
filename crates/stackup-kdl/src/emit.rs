@@ -424,12 +424,19 @@ impl W {
             let _ = write!(head, " {}", ident(n));
         }
         props(&mut head, &p.args);
-        self.stmt(head, !p.features.is_empty(), |w| {
+        self.stmt(head, !p.features.is_empty() || !p.ignores.is_empty(), |w| {
             for f in &p.features {
                 w.line(&format!(
                     "{} {}",
                     if f.on { "with" } else { "without" },
                     ident(&f.name)
+                ));
+            }
+            for i in &p.ignores {
+                w.line(&format!(
+                    "ignore {} reason={}",
+                    ident(&i.target),
+                    crate::value::Value::String(i.reason.clone()).repr()
                 ));
             }
         });

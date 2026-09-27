@@ -25,6 +25,12 @@ class Component:
     #: The path-derived UUID from `(tstamps …)`. This — not the designator — is what a part is
     #: matched by, so a rebuild that renumbers does not detach the layout.
     uuid: str = ""
+    manufacturer: str = ""
+    mpn: str = ""
+    lcsc: str = ""
+    mouser: str = ""
+    digikey: str = ""
+    series: str = ""
     #: What the part must survive, and what grade it is — the *specification*, as opposed to the
     #: provenance below. These are what make a footprint orderable: a 100 nF 0402 is sold at six
     #: working voltages in three dielectrics, and a board that does not carry which is a board whose
@@ -119,6 +125,18 @@ def parse(text: str) -> dict[str, Component]:
             # of which is namespaced. The `Stackup …` ones below are stackup's own account.
             if name == "Voltage":
                 component.voltage = _value(prop, "value")
+            elif name == "MF":
+                component.manufacturer = _value(prop, "value")
+            elif name == "Manufacturer_Part_Number":
+                component.mpn = _value(prop, "value")
+            elif name == "LCSC":
+                component.lcsc = _value(prop, "value")
+            elif name == "Mouser":
+                component.mouser = _value(prop, "value")
+            elif name == "DigiKey":
+                component.digikey = _value(prop, "value")
+            elif name == "Series":
+                component.series = _value(prop, "value")
             elif name == "Dissipation":
                 component.dissipation = _value(prop, "value")
             elif name == "Current":

@@ -13,8 +13,8 @@ kept a part the design has dropped would be a board disagreeing with its own sch
 * a part is matched by **UUID**, held in the footprint's path field, not by its designator — so a
   rebuild that renumbers finds the footprint it placed last time and renames it, leaving position,
   rotation and routing alone;
-* a footprint the design does not place is **deleted**. A mounting hole, a fiducial, a logo — the
-  answer is to put it in the design, which is where a board's contents are decided;
+* an electrical footprint the design no longer places is **deleted**. KiCad `board_only`
+  footprints are layout objects and survive without a KDL placement;
 * a part whose **footprint** changed swaps bodies in place: the new land arrives on the old one's
   position, rotation and side, and the old body goes. Without this, a design that moved a part to a
   different package kept the old land with the shared pad numbers remapped and the rest silently
@@ -187,19 +187,19 @@ def apply(
 
 
 def _prune(board, components: dict[str, Component], outcome: Outcome) -> None:
-    """Deletes every footprint the design does not place.
+    """Deletes electrical footprints the design does not place.
 
-    A board is a projection of its design, so a footprint the design has no part for is stale by
-    definition — whether stackup placed it and the part has since gone, or it was dropped in by hand
-    in the editor. Both read the same way here, because a footprint with no UUID is one no design
-    claims, and the fix for a mounting hole or a fiducial is to put it in the design rather than to
-    carve out an exception the next sync has to keep honouring.
+    KiCad `board_only` footprints are layout objects, such as mounting holes, fiducials, and
+    artwork. Their position and presence are decided in the PCB editor, so sync leaves them alone.
+    Other unclaimed footprints are stale electrical parts and are removed.
 
     This is the one destructive thing a sync does, so it is the one thing the report names outright
     rather than counting.
     """
     wanted = {component.uuid for component in components.values() if component.uuid}
     for footprint in list(board.GetFootprints()):
+        if footprint.GetAttributes() & pcbnew.FP_BOARD_ONLY:
+            continue
         if _uuid_of(footprint) in wanted:
             continue
         outcome.deleted.append(footprint.GetReference())
@@ -349,6 +349,12 @@ def _refresh(footprint, component: Component, hints) -> bool:
     # across the copper — and emptied by `_set_field` if the design stops having an answer, so a
     # re-rated part cannot leave last time's number on the board.
     changed |= _set_field(footprint, "Voltage", component.voltage)
+    changed |= _set_field(footprint, "MF", component.manufacturer)
+    changed |= _set_field(footprint, "Manufacturer_Part_Number", component.mpn)
+    changed |= _set_field(footprint, "LCSC", component.lcsc)
+    changed |= _set_field(footprint, "Mouser", component.mouser)
+    changed |= _set_field(footprint, "DigiKey", component.digikey)
+    changed |= _set_field(footprint, "Series", component.series)
     changed |= _set_field(footprint, "Dissipation", component.dissipation)
     changed |= _set_field(footprint, "Current", component.current)
     changed |= _set_field(footprint, "Tolerance", component.tolerance)
