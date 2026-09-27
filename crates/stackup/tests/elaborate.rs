@@ -6,12 +6,49 @@ use std::{
 };
 
 use stackup::{
+    bom,
     elaborate::elaborate,
     load::Library,
     manifest::{Options, Prefixes},
     model::{Model, Terminal},
     netlist,
 };
+
+#[test]
+fn bom_groups_identical_orders_and_preserves_csv_fields() {
+    let fx = Fixture::new(
+        "bom-csv",
+        &[(
+            "board.kdl",
+            r#"
+part capacitor {
+    symbol "Device:C"
+    reference C
+    manufacturer "Default Maker"
+    order mpn="DEFAULT"
+    pin A passive
+    pin B passive
+    package chip footprint="Capacitor_SMD:C_0402_1005Metric" { pad A 1; pad B 2 }
+}
+design demo {
+    place capacitor C1 bom_value="100nF, tested" manufacturer="Maker \"One\"" mpn="ABC" lcsc="C123"
+    place capacitor C2 bom_value="100nF, tested" manufacturer="Maker \"One\"" mpn="ABC" lcsc="C123"
+    place capacitor C3 bom_value="100nF, tested" manufacturer="Maker \"One\"" mpn="ABC" lcsc="C456"
+}
+"#,
+        )],
+    );
+    let (lib, loaded) = Library::load(&fx.dir.join("board.kdl"), &Prefixes::default());
+    assert!(loaded.is_empty(), "{}", loaded.render());
+    let (file, design) = lib.designs()[0];
+    let model = elaborate(&lib, file, design);
+    assert!(model.report.is_empty(), "{}", model.report.render());
+    let (csv, report) = bom::csv(&lib, &model);
+    assert!(report.is_empty(), "{}", report.render());
+    assert!(csv.starts_with("Refs,Quantity,Value,Footprint,MF,MPN,LCSC,Mouser,DigiKey\n"));
+    assert!(csv.contains("\"C1,C2\",\"2\",\"100nF, tested\",\"Capacitor_SMD:C_0402_1005Metric\",\"Maker \"\"One\"\"\",\"ABC\",\"C123\""), "{csv}");
+    assert!(csv.contains("\"C3\",\"1\",\"100nF, tested\",\"Capacitor_SMD:C_0402_1005Metric\",\"Maker \"\"One\"\"\",\"ABC\",\"C456\""), "{csv}");
+}
 
 /// A scratch directory holding the given files, loaded as a library.
 struct Fixture {

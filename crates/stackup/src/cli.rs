@@ -4,6 +4,7 @@
 //! - `check`: load and elaborate, and report everything found.
 //! - `tree`: the instances and nets of a design, for reading.
 //! - `netlist`: the KiCad netlist, to stdout or `-o`.
+//! - `bom`: a purchasing CSV grouped by value, footprint and order fields.
 //!
 //! `@prefix/…` imports resolve through the `manifest.kdl` at or above the file, and this
 //! machine's `manifest.local.kdl` beside it; every redirect the local file makes is printed, and
@@ -13,6 +14,7 @@
 use std::{io::IsTerminal, path::PathBuf, process::exit};
 
 use crate::{
+    bom,
     elaborate::elaborate,
     load::Library,
     manifest::{LOCAL, Options, Origin, Prefixes},
@@ -32,7 +34,7 @@ struct Args {
 fn parse_args() -> Result<Args, String> {
     let mut args = std::env::args().skip(1);
     let command = args.next().ok_or(
-        "usage: stackup <check|tree|netlist> <file.kdl> [--design NAME] [--lib DIR] [--locked] [-o FILE]; stackup update [library]",
+        "usage: stackup <check|tree|netlist|bom> <file.kdl> [--design NAME] [--lib DIR] [--locked] [-o FILE]; stackup update [library]",
     )?;
     let mut file = None;
     let mut design = None;
@@ -207,8 +209,22 @@ pub fn run() {
                     None => print!("{text}"),
                 }
             }
+            "bom" => {
+                let (text, export) = bom::csv(&lib, &model);
+                failed |= export.has_errors();
+                report.findings.extend(export.findings);
+                match &args.out {
+                    Some(path) => {
+                        if let Err(e) = std::fs::write(path, &text) {
+                            eprintln!("can't write {}: {e}", path.display());
+                            exit(1);
+                        }
+                    }
+                    None => print!("{text}"),
+                }
+            }
             other => {
-                eprintln!("unknown command `{other}`; one of check, tree, netlist");
+                eprintln!("unknown command `{other}`; one of check, tree, netlist, bom");
                 exit(2);
             }
         }

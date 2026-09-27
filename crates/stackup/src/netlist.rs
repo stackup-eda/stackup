@@ -181,7 +181,7 @@ fn property(name: &str, value: &str) -> List {
 }
 
 /// A generic passive's body, from the design's stock and what the part is.
-fn generic_footprint(reference: Option<&str>, imperial: Option<&str>) -> Option<String> {
+pub(crate) fn generic_footprint(reference: Option<&str>, imperial: Option<&str>) -> Option<String> {
     let imperial = imperial?;
     let metric = match imperial {
         "0201" => "0603",

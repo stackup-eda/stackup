@@ -22,4 +22,4 @@ cargo install --path crates/stackup
 
 The published CLI installs with `cargo install stackup-eda`; the command remains `stackup`.
 
-Run `stackup check path/to/board.kdl` to validate a design. A project can import a pinned parts library through its `manifest.kdl`; see the library README for an example. Use `stackup --help` for the available commands.
+Run `stackup check path/to/board.kdl` to validate a design, or `stackup bom path/to/board.kdl` to export a purchasing CSV. A project can import a pinned parts library through its `manifest.kdl`; see the library README for an example. Use `stackup --help` for the available commands.
