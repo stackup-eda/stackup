@@ -307,6 +307,7 @@ impl Cx {
             let item = match name(n) {
                 "use" => self.use_(n).map(Item::Use),
                 "part" => self.part(n).map(Item::Part),
+                "mpn" => self.mpn(n).map(Item::Mpn),
                 "block" => self.block(n, BlockKind::Block).map(Item::Block),
                 "design" => self.block(n, BlockKind::Design).map(Item::Block),
                 "type" => self.type_decl(n).map(Item::Type),
@@ -361,6 +362,60 @@ impl Cx {
         Some(Part {
             name: part_name?,
             items,
+            span: span(n),
+        })
+    }
+
+    fn mpn(&mut self, n: &KdlNode) -> Option<Mpn> {
+        let id = self.text_arg(n, 0, "manufacturer part number")?;
+        self.no_more_args(n, 1);
+        let props = self.known_properties(
+            n,
+            &[
+                "manufacturer",
+                "kind",
+                "value",
+                "footprint",
+                "rated_voltage",
+            ],
+        );
+        let mut catalog = Vec::new();
+        for child in children(n) {
+            self.no_more_args(child, 0);
+            self.no_children(child);
+            let properties = match name(child) {
+                "catalog" => self.known_properties(child, &["mouser", "lcsc", "digikey"]),
+                "set" => self
+                    .known_properties(
+                        child,
+                        &["catalog.mouser", "catalog.lcsc", "catalog.digikey"],
+                    )
+                    .into_iter()
+                    .map(|mut p| {
+                        p.key = p.key.strip_prefix("catalog.").unwrap().to_string();
+                        p
+                    })
+                    .collect(),
+                _ => {
+                    self.unknown(child, "an MPN");
+                    continue;
+                }
+            };
+            for p in properties {
+                if catalog
+                    .iter()
+                    .any(|existing: &Property| existing.key == p.key)
+                {
+                    self.error(p.span, format!("`catalog.{}` is given twice", p.key));
+                } else {
+                    catalog.push(p);
+                }
+            }
+        }
+        Some(Mpn {
+            name: id,
+            props,
+            catalog,
             span: span(n),
         })
     }
@@ -910,6 +965,7 @@ impl Cx {
                         span: span(c),
                     }))
                 }
+                "match" if what == "a design" => Some(BlockItem::Match(self.statement(c))),
                 _ => {
                     self.unknown(c, what);
                     None

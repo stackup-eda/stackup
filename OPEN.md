@@ -27,11 +27,9 @@ and leaves here; when a gap is closed its bullet is deleted.
 - **Pin roles.** `role` exists; its vocabulary does not.
 - **Two selects on one net.** Two chip-selects joined by a `circuit` are not seen by the bus.
 - **Package selection by intent.** The generic parts take their body from their `intent` and a
-  board's purchasing policy; that policy is outside the specification. The same policy needs a
-  way to supply exact orderable choices for parts placed inside library blocks, where the board
-  cannot add `manufacturer=`, `mpn=`, or distributor IDs to the child `place` statements. Whether
-  a stock rule selects by part, value and package, a board states order fields by child path, or
-  both are needed is unsettled (stackup-eda/stackup#2).
+  board's purchasing policy; that package policy is outside the specification. A board can now
+  select MPNs for parts inside library blocks with `match placement` (§6.6); whether a similar
+  rule should select the footprint itself is still open.
 - **The expression function set** beyond the functions listed in SPEC §4.3.
 - **Re-exporting a child's port.** A block that offers a child's port as its own — a node sheet
   whose `v3v3` is its SBC's `vout`, whose `link` is the SBC's `uart` — joins them line by line
@@ -94,6 +92,11 @@ and leaves here; when a gap is closed its bullet is deleted.
   is a range.
 
 ## Engine: behind the specification
+
+- **Legacy order migration.** Existing parts in `stackup-parts` name literal MPNs in `order`
+  without MPN declarations. They remain exportable, but have no declared ratings or body facts
+  for `stackup check` to validate. Migrate these choices to MPN declarations as their data is
+  recorded; new board `match placement` rules already require declarations.
 
 Connection-local `require peripheral.<capability>` now checks instance capabilities, including
 conditional `has ... when=...`, and requires one candidate to satisfy them together. The

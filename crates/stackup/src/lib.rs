@@ -22,6 +22,7 @@ pub mod load;
 pub mod manifest;
 pub mod model;
 pub mod netlist;
+pub mod purchasing;
 pub mod quantity;
 pub mod report;
 pub mod sexpr;

@@ -127,6 +127,17 @@ impl W {
             match item {
                 Item::Use(u) => self.line(&format!("use {}", quote(&u.path))),
                 Item::Part(p) => self.part(p),
+                Item::Mpn(m) => {
+                    let mut head = format!("mpn {}", ident(&m.name));
+                    props(&mut head, &m.props);
+                    self.stmt(head, !m.catalog.is_empty(), |w| {
+                        if !m.catalog.is_empty() {
+                            let mut catalog = "catalog".to_string();
+                            props(&mut catalog, &m.catalog);
+                            w.line(&catalog);
+                        }
+                    });
+                }
                 Item::Block(b) => self.block(b),
                 Item::Type(t) => self.type_decl(t),
             }
@@ -401,6 +412,7 @@ impl W {
                         w.statement(st);
                     }
                 }),
+                BlockItem::Match(m) => self.statement(m),
             }
         }
     }

@@ -53,6 +53,174 @@ design demo {
 }
 
 #[test]
+fn board_matches_library_children_to_validated_mpns() {
+    let fx = Fixture::new(
+        "matched-mpns",
+        &[
+            (
+                "parts.kdl",
+                r#"
+part capacitor {
+    reference C
+    pin A passive
+    pin B passive
+    package chip footprint="Capacitor_SMD:C_0402_1005Metric" { pad A 1; pad B 2 }
+}
+block supply {
+    place capacitor C value="100nF" required_voltage="12V" digikey="OLD"
+}
+"#,
+            ),
+            (
+                "board.kdl",
+                r#"
+use "./parts.kdl"
+mpn C16 manufacturer="Acme" kind=capacitor value="100nF" footprint="Capacitor_SMD:C_0402_1005Metric" rated_voltage="16V" {
+    catalog lcsc="C123" mouser="123-C16"
+}
+design demo {
+    place supply rail
+    place capacitor high value="100nF" required_voltage="25V"
+    match placement {
+        when kind=capacitor
+        when package.size="0402"
+        when value="100nF"
+        when required_voltage max="16V"
+        set mpn=C16
+    }
+}
+"#,
+            ),
+        ],
+    );
+    let (lib, loaded) = Library::load(&fx.dir.join("board.kdl"), &Prefixes::default());
+    assert!(loaded.is_empty(), "{}", loaded.render());
+    let (file, design) = lib.designs()[0];
+    let model = elaborate(&lib, file, design);
+    assert!(model.report.is_empty(), "{}", model.report.render());
+    let cap = model.parts().find(|(_, i)| i.path == "rail/C").unwrap().1;
+    assert_eq!(cap.fields.get("mpn").map(String::as_str), Some("C16"));
+    assert_eq!(cap.fields.get("voltage").map(String::as_str), Some("16V"));
+    assert_eq!(cap.fields.get("lcsc").map(String::as_str), Some("C123"));
+    assert_eq!(cap.fields.get("digikey").map(String::as_str), Some(""));
+    let (csv, report) = bom::csv(&lib, &model);
+    assert!(
+        report.render().contains("`high` has no MPN for the BOM"),
+        "{}",
+        report.render()
+    );
+    assert!(csv.contains("\"C16\",\"C123\",\"123-C16\""), "{csv}");
+    let (netlist, report) = netlist::kicad(&lib, &model);
+    assert!(report.is_empty(), "{}", report.render());
+    assert!(
+        netlist.contains("(name \"Manufacturer_Part_Number\")\n\t\t\t\t(value \"C16\")"),
+        "{netlist}"
+    );
+    assert!(
+        netlist.contains("(name \"Voltage\")\n\t\t\t\t(value \"16V\")"),
+        "{netlist}"
+    );
+    assert!(!netlist.contains("OLD"), "{netlist}");
+}
+
+#[test]
+fn placement_match_reads_a_rating_derived_from_a_net_fact() {
+    let fx = Fixture::new(
+        "derived-required-rating",
+        &[
+            ("passives.kdl", PASSIVES),
+            ("connectors.kdl", CONNECTORS),
+            (
+                "board.kdl",
+                r#"
+use "./passives.kdl"
+use "./connectors.kdl"
+mpn C16 kind=capacitor value="100nF" footprint="Capacitor_SMD:C_0402_1005Metric" rated_voltage="16V"
+block filter {
+    port rail type=power
+    derive needed "rail.voltage.max * 2"
+    place capacitor C value="100nF" required_voltage=needed
+    circuit C.a rail.rail
+}
+design demo {
+    stock { packages imperial="0402" }
+    place filter f rail=V5.out
+    place power-jack V5 voltage="5V"
+    match placement {
+        when kind=capacitor
+        when required_voltage max="16V"
+        set mpn=C16
+    }
+}
+"#,
+            ),
+        ],
+    );
+    let model = fx.model("board.kdl", "demo");
+    assert!(model.report.is_empty(), "{}", model.report.render());
+    let cap = model.parts().find(|(_, i)| i.path == "f/C").unwrap().1;
+    assert_eq!(cap.required_voltage.unwrap().to_string(), "10V");
+    assert_eq!(cap.fields.get("mpn").map(String::as_str), Some("C16"));
+}
+
+#[test]
+fn chosen_mpn_must_satisfy_placement_rating() {
+    let fx = Fixture::new(
+        "mpn-rating",
+        &[(
+            "board.kdl",
+            r#"
+part capacitor { reference C; pin A passive; package chip footprint="C_0402" { pad A 1 } }
+mpn C16 kind=capacitor value="10nF" footprint="C_0402" rated_voltage="16V"
+design demo {
+    place capacitor C value="100nF" required_voltage="25V"
+    match placement { when kind=capacitor; set mpn=C16 }
+}
+
+"#,
+        )],
+    );
+    let model = fx.model("board.kdl", "demo");
+    assert!(
+        model.report.render().contains("below `C`'s required 25V"),
+        "{}",
+        model.report.render()
+    );
+    assert!(model.report.render().contains("has value `10nF`"));
+}
+
+#[test]
+fn conflicting_mpn_rules_and_missing_declarations_are_findings() {
+    let fx = Fixture::new(
+        "mpn-policy-errors",
+        &[(
+            "board.kdl",
+            r#"
+part capacitor { reference C; pin A passive; package chip footprint="C_0402" { pad A 1 } }
+mpn A kind=capacitor
+mpn B kind=capacitor
+design demo {
+    place capacitor C
+    match placement { when kind=capacitor; set mpn=A }
+    match placement { when kind=capacitor; set mpn=B }
+    match placement { when kind=inductor; set mpn=missing }
+}
+"#,
+        )],
+    );
+    let model = fx.model("board.kdl", "demo");
+    let messages = model.report.render();
+    assert!(
+        messages.contains("MPN `missing` is not in scope"),
+        "{messages}"
+    );
+    assert!(
+        messages.contains("matches conflicting MPN choices"),
+        "{messages}"
+    );
+}
+
+#[test]
 fn hand_placement_requires_a_boolean() {
     let fx = Fixture::new(
         "hand-boolean",

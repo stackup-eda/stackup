@@ -21,9 +21,19 @@ pub struct File {
 pub enum Item {
     Use(Use),
     Part(Part),
+    Mpn(Mpn),
     /// A `block` or a `design`, told apart by [`Block::kind`].
     Block(Block),
     Type(TypeDecl),
+}
+
+/// An orderable manufacturer part and the catalog numbers that supply it.
+#[derive(Clone, Debug, PartialEq)]
+pub struct Mpn {
+    pub name: String,
+    pub props: Vec<Property>,
+    pub catalog: Vec<Property>,
+    pub span: Span,
 }
 
 impl File {
@@ -37,6 +47,13 @@ impl File {
     pub fn parts(&self) -> impl Iterator<Item = &Part> {
         self.items.iter().filter_map(|i| match i {
             Item::Part(p) => Some(p),
+            _ => None,
+        })
+    }
+
+    pub fn mpns(&self) -> impl Iterator<Item = &Mpn> {
+        self.items.iter().filter_map(|i| match i {
+            Item::Mpn(m) => Some(m),
             _ => None,
         })
     }
@@ -571,6 +588,8 @@ pub enum BlockItem {
     Fact(TerminalFact),
     Scope(Scope),
     Stock(Stock),
+    /// A board policy selecting an MPN for resolved placements.
+    Match(Statement),
     /// A child block — a feature of this block, placed as a part's child blocks are (§7).
     Block(Block),
 }

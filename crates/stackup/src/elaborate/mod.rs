@@ -43,6 +43,7 @@ pub fn elaborate(lib: &Library, file: FileId, design: &Block) -> Model {
         ignores: Vec::new(),
         pending_notes: Vec::new(),
         pending_values: Vec::new(),
+        pending_required_voltages: Vec::new(),
         pending_anchors: Vec::new(),
         pending_port_joins: Vec::new(),
         nc: Vec::new(),
@@ -74,7 +75,9 @@ pub fn elaborate(lib: &Library, file: FileId, design: &Block) -> Model {
     b.block_ports(root, frame, file, design);
     b.body(frame, &design.items);
     b.join_pending_ports();
-    b.finish(design.name.clone())
+    let mut model = b.finish(design.name.clone());
+    crate::purchasing::apply(lib, file, design, &mut model);
+    model
 }
 
 // --- Working state ------------------------------------------------------------------------------
@@ -214,6 +217,8 @@ struct Builder<'a> {
     pending_notes: Vec<(usize, usize, Value, Span)>,
     /// Part values may refer to derives, so resolve them after facts are available.
     pending_values: Vec<(usize, usize, Value, Span)>,
+    /// A placement requirement may read a derive or a net fact in its placing block.
+    pending_required_voltages: Vec<(usize, usize, Value, Span)>,
     /// Anchor references can name parts placed later in the same block.
     pending_anchors: Vec<(usize, usize, usize, Value, Span)>,
     /// Port arguments can name placements declared later in the same or an enclosing body.
@@ -224,7 +229,7 @@ struct Builder<'a> {
     imperial: Option<String>,
 }
 
-const LANGUAGE_PROPS: [&str; 23] = [
+const LANGUAGE_PROPS: [&str; 24] = [
     "value",
     "intent",
     "note",
@@ -244,6 +249,7 @@ const LANGUAGE_PROPS: [&str; 23] = [
     "digikey",
     "series",
     "voltage",
+    "required_voltage",
     "dissipation",
     "current",
     "tolerance",
@@ -304,6 +310,7 @@ impl<'a> Builder<'a> {
             value: None,
             footprint: None,
             fields: HashMap::new(),
+            required_voltage: None,
             hand: false,
             intent: None,
             anchor: None,
@@ -1230,6 +1237,10 @@ impl<'a> Builder<'a> {
                         .push((inst, frame, a.value.clone(), a.span)),
                     "footprint" => {
                         self.instances[inst].footprint = Some(self.text_value(frame, &a.value))
+                    }
+                    "required_voltage" => {
+                        self.pending_required_voltages
+                            .push((inst, frame, a.value.clone(), a.span))
                     }
                     "bom_value" | "manufacturer" | "mpn" | "lcsc" | "mouser" | "digikey"
                     | "series" | "voltage" | "dissipation" | "current" | "tolerance"

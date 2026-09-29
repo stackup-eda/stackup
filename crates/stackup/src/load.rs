@@ -15,7 +15,7 @@ use std::{
 
 use stackup_kdl::{
     Diagnostic, Document, Source, Span,
-    ast::{self, Block, BlockKind, Item, Part, TypeDecl},
+    ast::{self, Block, BlockKind, Item, Mpn, Part, TypeDecl},
 };
 
 use crate::{
@@ -31,6 +31,7 @@ pub enum Decl<'a> {
     Part(&'a Part),
     Block(&'a Block),
     Type(&'a TypeDecl),
+    Mpn(&'a Mpn),
 }
 
 impl Decl<'_> {
@@ -39,6 +40,7 @@ impl Decl<'_> {
             Decl::Part(p) => &p.name,
             Decl::Block(b) => &b.name,
             Decl::Type(t) => &t.name,
+            Decl::Mpn(m) => &m.name,
         }
     }
 
@@ -48,6 +50,7 @@ impl Decl<'_> {
             Decl::Block(b) if b.kind == BlockKind::Design => "design",
             Decl::Block(_) => "block",
             Decl::Type(_) => "type",
+            Decl::Mpn(_) => "mpn",
         }
     }
 }
@@ -81,6 +84,7 @@ fn item_name(item: &Item) -> Option<(&str, Span)> {
         Item::Part(p) => Some((&p.name, p.span)),
         Item::Block(b) => Some((&b.name, b.span)),
         Item::Type(t) => Some((&t.name, t.span)),
+        Item::Mpn(m) => Some((&m.name, m.span)),
         Item::Use(_) => None,
     }
 }
@@ -250,6 +254,7 @@ impl Library {
             Item::Part(p) => Decl::Part(p),
             Item::Block(b) => Decl::Block(b),
             Item::Type(t) => Decl::Type(t),
+            Item::Mpn(m) => Decl::Mpn(m),
             Item::Use(_) => unreachable!("a use is never a declaration"),
         }
     }

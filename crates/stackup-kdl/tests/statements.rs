@@ -35,6 +35,37 @@ fn one_error(text: &str, expected: &str) {
 }
 
 #[test]
+fn mpn_declaration_and_placement_match_round_trip() {
+    let source = r#"mpn C16 manufacturer=Acme kind=capacitor value="100nF" footprint="C_0402" rated_voltage="16V" {
+    catalog lcsc=C123 mouser="123-C16"
+}
+
+design board {
+    match placement {
+        when kind=capacitor
+        when required_voltage max="16V"
+        set mpn=C16
+    }
+}
+"#;
+    let file = read(source);
+    assert_eq!(file.mpns().next().unwrap().name, "C16");
+    assert!(matches!(
+        file.designs().next().unwrap().items[0],
+        BlockItem::Match(_)
+    ));
+    assert_eq!(emit(&file), source);
+}
+
+#[test]
+fn mpn_catalog_facts_accept_set_syntax() {
+    let file = read("mpn C16 { set catalog.mouser=\"123-C16\"; set catalog.lcsc=C123 }\n");
+    let mpn = file.mpns().next().unwrap();
+    assert_eq!(mpn.catalog.len(), 2);
+    assert_eq!(mpn.catalog[0].key, "mouser");
+}
+
+#[test]
 fn multiline_circuit_reads_and_writes() {
     let source = r#"design board {
     circuit {

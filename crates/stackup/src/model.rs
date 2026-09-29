@@ -4,6 +4,7 @@ use std::collections::HashMap;
 
 use stackup_kdl::Span;
 
+use crate::quantity::Quantity;
 use crate::{load::DeclRef, load::FileId, report::Report};
 
 /// One thing placed in the design, at a path.
@@ -25,6 +26,8 @@ pub struct Instance {
     pub footprint: Option<String>,
     /// Board-selected ordering and rating fields, overriding a library part's defaults.
     pub fields: HashMap<String, String>,
+    /// Minimum component voltage rating required by this use of the placement.
+    pub required_voltage: Option<Quantity>,
     /// Installed by hand after outsourced assembly; retained in the purchasing BOM.
     pub hand: bool,
     pub intent: Option<String>,

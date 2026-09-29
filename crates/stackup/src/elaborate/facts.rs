@@ -26,7 +26,7 @@ use crate::{
     expr::{self, Eval, Origin, Scope, Trace, Val},
     load::{Decl, FileId},
     model::{Kind, Net, Terminal},
-    quantity::Quantity,
+    quantity::{Quantity, Unit},
     report::Finding,
 };
 
@@ -231,6 +231,32 @@ impl<'a> Checker<'_, 'a> {
         let keys: Vec<(usize, Aspect, String)> = self.by_fact.keys().cloned().collect();
         for (net, aspect, fact) in keys {
             self.fact(net, aspect, &fact, None);
+        }
+
+        // A library may compute a placement's required rating from its parameters or net
+        // facts. Keep the quantity as a range, since the upper end is what an MPN must cover.
+        let required = std::mem::take(&mut self.b.pending_required_voltages);
+        for (inst, frame, written, span) in required {
+            let source = value_src(&written);
+            match self.eval_in(frame, None, &source, span) {
+                Ok(Eval {
+                    val: Val::Num(q), ..
+                }) if q.unit == Unit::VOLT && q.lo >= 0.0 => {
+                    self.b.instances[inst].required_voltage = Some(q);
+                    self.b.instances[inst]
+                        .fields
+                        .insert("required_voltage".into(), q.to_string());
+                }
+                Ok(other) => self.b.error(
+                    self.b.frames[frame].file,
+                    span,
+                    format!(
+                        "`required_voltage=` needs a nonnegative voltage, got {}",
+                        other.val
+                    ),
+                ),
+                Err(e) => self.b.error(self.b.frames[frame].file, span, e),
+            }
         }
 
         // Notes written as templates, or naming a `text`.

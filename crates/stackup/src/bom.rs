@@ -46,6 +46,28 @@ pub fn csv(lib: &Library, model: &Model) -> (String, Report) {
                     symbol_name.to_string()
                 }
             });
+        let order = part.order_in(pkg);
+        let mpn = inst
+            .fields
+            .get("mpn")
+            .map(String::as_str)
+            .or_else(|| {
+                order.and_then(|o| {
+                    o.props
+                        .iter()
+                        .find(|p| p.key == "mpn")
+                        .and_then(|p| p.value.as_str())
+                })
+            })
+            .unwrap_or("")
+            .to_string();
+        if mpn.is_empty() {
+            report.error(
+                lib.source(inst.file),
+                inst.span,
+                format!("`{}` has no MPN for the BOM", inst.path),
+            );
+        }
         let footprint = inst.footprint.clone().or_else(|| {
             pkg.and_then(|p| p.footprint.clone()).or_else(|| {
                 generic_footprint(
@@ -62,7 +84,6 @@ pub fn csv(lib: &Library, model: &Model) -> (String, Report) {
             );
             continue;
         };
-        let order = part.order_in(pkg);
         let field = |key: &str| {
             let default = if key == "manufacturer" {
                 part.meta(MetaKey::Manufacturer).and_then(|v| v.as_str())
@@ -85,7 +106,7 @@ pub fn csv(lib: &Library, model: &Model) -> (String, Report) {
             value,
             footprint,
             field("manufacturer"),
-            field("mpn"),
+            mpn,
             field("lcsc"),
             field("mouser"),
             field("digikey"),

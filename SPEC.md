@@ -52,6 +52,7 @@ are declarations and imports:
 | Statement | Declares |
 |---|---|
 | `part <name>` | a part (§5) |
+| `mpn <number>` | an orderable manufacturer part (§6.6) |
 | `block <name>` | a block (§6) |
 | `design <name>` | a design (§6.1) |
 | `type <name>` | a composed type (§8.3) |
@@ -433,6 +434,14 @@ on the exported PCB footprint. `value=` is the component's electrical value; `bo
 give KiCad's Value field a fuller assembly string when the fab does not export purchasing fields.
 These choices do not change the library part's pins or behavior.
 
+`required_voltage=` is the minimum voltage rating a placement needs. A library block may state it
+on a child placement from a quantity, parameter, derive, or expression over net facts. It is
+evaluated after wiring; for a range, the MPN must cover its upper bound. It is separate from
+`voltage=`, which remains
+the rating selected for export by older designs. A selected MPN (§6.6) supplies its own
+`rated_voltage`; `stackup check` compares that rating with `required_voltage` and exports the
+selected rating as `Voltage` in KiCad.
+
 The language properties `intent=` and `note=` state what a part is placed to do
 (`decouple`, `bypass`, `bulk`, `filter`, `pull-up`, `pull-down`, `timing`, `series`, `divider`)
 and record a note. Any placement takes `note=`, and two
@@ -488,6 +497,60 @@ nc mcu.PA5 mcu.PA12 mcu.PC14 note="spare — the oscillator pads, free because t
 `nc` declares pins deliberately joined to nothing. On a board a dropped join and a spare pin are
 the same netlist entry, so the difference has to be stated to be checked: a pin declared `nc`
 that is joined to anything is a finding. A pin nothing declares is only unconnected.
+
+### 6.6 Purchasing declarations and placement matching
+
+An MPN declaration names an orderable manufacturer part. Its properties describe the actual
+component, and `catalog` gives optional supplier catalog numbers. Each number may also be written
+separately as `set catalog.mouser="…"`, `set catalog.lcsc="…"`, or
+`set catalog.digikey="…"` inside the MPN declaration:
+
+```kdl
+mpn "CL05B104KO5NNNC" manufacturer="Samsung" kind=capacitor value="100nF" \
+    footprint="Capacitor_SMD:C_0402_1005Metric" rated_voltage="16V" {
+    catalog lcsc="C1525" mouser="..."
+}
+```
+
+An MPN may be imported like a part or block. `kind`, `value` and `footprint`, when supplied, must
+agree with a placement that selects it; `rated_voltage` must be at least the placement's
+`required_voltage`. A placement with a required voltage cannot select an MPN without a rated
+voltage. The comparison uses quantities with units, so `0.1µF` and `100nF` are the same value.
+
+A design may select MPNs for its own and its library blocks' descendant parts:
+
+```kdl
+design board {
+    place converter buck
+    match placement {
+        when kind=capacitor
+        when package.size="0402"
+        when value="100nF"
+        when required_voltage max="16V"
+        set mpn="CL05B104KO5NNNC"
+    }
+}
+```
+
+Each `when <fact>=<value>` tests equality. `when <fact> min=<quantity>` and `max=<quantity>`
+test inclusive numeric bounds. Available facts are `kind` (the placed part declaration's name),
+`part` (the same name), `value`, `footprint`, `package.size`, `intent`, `path`, and
+`required_voltage`. `package.size` is the imperial size code in the chosen footprint, such as
+`0402`; that footprint may itself come from `stock { packages imperial=… }`. An absent fact does not match. Rules
+match the resolved placements before any rule's selection is applied; statement order does not
+change which rules match. Two matching rules choosing different MPNs are an error. A rule's MPN
+must name a visible declaration. A board match takes precedence over an MPN stated on the child
+placement or its part.
+
+A declared MPN is the whole purchasing choice. Its catalog numbers, manufacturer and selected
+rating replace older order fields on the placement or library part; an omitted supplier number
+stays blank rather than carrying a number for a different component.
+
+`stackup check` validates every selected declared MPN but does not require one. Existing literal
+`mpn=` values on parts or placements remain accepted without a declaration; they have no
+declaration properties to validate. `stackup bom` reports an error for each part with no MPN,
+while still producing the CSV. Supplier catalog numbers are optional. The KiCad export carries
+the selected MPN, manufacturer, supplier numbers and rated voltage where present.
 
 ## 7. Features
 
