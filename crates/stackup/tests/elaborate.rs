@@ -1858,3 +1858,152 @@ design demo {
         "{text}"
     );
 }
+
+#[test]
+fn peripheral_requirements_are_conditional_and_connection_local() {
+    let base = r#"
+type i2c { line scl; line sda }
+part mcu {
+    reference U
+    pin PB6 bidirectional
+    pin PB7 bidirectional
+    pin PB10 bidirectional
+    pin PB11 bidirectional
+    pin PB13 bidirectional
+    pin PB14 bidirectional
+    package large footprint="Test:MCU" { pad PB6 1; pad PB7 2; pad PB10 3; pad PB11 4; pad PB13 5; pad PB14 6 }
+    package small footprint="Test:MCU" { pad PB6 1; pad PB7 2; pad PB10 3; pad PB11 4; pad PB13 5; pad PB14 6 }
+    peripheral I2C1 i2c {
+        scl PB6
+        sda PB7
+        has bootloader when="scl == PB6 && sda == PB7"
+    }
+    peripheral I2C2 i2c {
+        scl PB10 PB13
+        sda PB11 PB14
+        has bootloader when="package == large && scl == PB10 && sda == PB11"
+        has dma
+    }
+    peripheral ALT i2c {
+        scl PB10 PB13
+        sda PB11 PB14
+        has special
+    }
+}
+part connector {
+    reference J
+    pin C passive
+    pin D passive
+    package header footprint="Test:Header" { pad C 1; pad D 2 }
+    port bus type=i2c { line scl pin=C; line sda pin=D }
+}
+design demo {
+    place mcu cpu package=PACKAGE
+    place connector monitor
+    place connector expansion
+    connect i2c { from cpu scl=PB6 sda=PB7; to monitor; require peripheral.bootloader }
+    connect i2c { from cpu scl=CLOCK sda=DATA; to expansion; REQUIRE }
+}
+"#;
+    for (label, package, clock, data, requirement, error) in [
+        (
+            "match",
+            "large",
+            "PB10",
+            "PB11",
+            "require peripheral.bootloader",
+            false,
+        ),
+        (
+            "qwiic",
+            "large",
+            "PB13",
+            "PB14",
+            "require peripheral.bootloader",
+            true,
+        ),
+        (
+            "package",
+            "small",
+            "PB10",
+            "PB11",
+            "require peripheral.bootloader",
+            true,
+        ),
+        (
+            "mixed",
+            "large",
+            "PB10",
+            "PB14",
+            "require peripheral.bootloader",
+            true,
+        ),
+        (
+            "unconditional",
+            "small",
+            "PB13",
+            "PB14",
+            "require peripheral.dma",
+            false,
+        ),
+        (
+            "same-instance",
+            "large",
+            "PB10",
+            "PB11",
+            "require peripheral.bootloader; require peripheral.special",
+            true,
+        ),
+        (
+            "missing",
+            "large",
+            "PB10",
+            "PB11",
+            "require peripheral.missing",
+            true,
+        ),
+        ("ordinary", "large", "PB13", "PB14", "", false),
+    ] {
+        let source = base
+            .replace("PACKAGE", package)
+            .replace("CLOCK", clock)
+            .replace("DATA", data)
+            .replace("REQUIRE", requirement);
+        let fx = Fixture::new(&format!("peripheral-{label}"), &[("board.kdl", &source)]);
+        let (lib, loaded) = Library::load(&fx.dir.join("board.kdl"), &Prefixes::default());
+        assert!(loaded.is_empty(), "{}", loaded.render());
+        let (file, design) = lib.designs()[0];
+        let model = elaborate(&lib, file, design);
+        assert_eq!(
+            model.report.has_errors(),
+            error,
+            "{label}: {}",
+            model.report.render()
+        );
+        if error {
+            assert!(
+                model.report.render().contains("no single peripheral"),
+                "{}",
+                model.report.render()
+            );
+        }
+    }
+    for (label, condition) in [
+        ("typo", "scll == PB10"),
+        ("pin-typo", "scl == PB99"),
+        ("nonboolean", "42"),
+        ("syntax", "scl =="),
+    ] {
+        let source = base
+            .replace("PACKAGE", "large")
+            .replace("CLOCK", "PB10")
+            .replace("DATA", "PB11")
+            .replace("REQUIRE", "require peripheral.bootloader")
+            .replace("package == large && scl == PB10 && sda == PB11", condition);
+        let fx = Fixture::new(&format!("peripheral-{label}"), &[("board.kdl", &source)]);
+        let (lib, loaded) = Library::load(&fx.dir.join("board.kdl"), &Prefixes::default());
+        assert!(loaded.is_empty(), "{}", loaded.render());
+        let (file, design) = lib.designs()[0];
+        assert!(elaborate(&lib, file, design).report.has_errors(), "{label}");
+    }
+}

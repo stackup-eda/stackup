@@ -469,6 +469,7 @@ impl W {
         let head = format!("connect {}", ident(&c.ty));
         let one_line = c.sides.len() == 2
             && c.unbound.is_empty()
+            && c.requires.is_empty()
             && c.sides.iter().all(|s| s.answers.is_empty())
             && c.sides[0].role == SideRole::From
             && c.sides[1].role == SideRole::To;
@@ -485,6 +486,9 @@ impl W {
                 let mut head = format!("{} {}", s.role.statement(), ident(&s.target.to_string()));
                 props(&mut head, &s.answers);
                 w.line(&head);
+            }
+            for r in &c.requires {
+                w.require(r);
             }
             for u in &c.unbound {
                 let mut head = format!(

@@ -24,6 +24,7 @@ use crate::{
 };
 
 mod facts;
+mod peripherals;
 mod static_values;
 
 /// Elaborates one design.
@@ -1869,6 +1870,7 @@ impl<'a> Builder<'a> {
                 unbound.insert(l.clone());
             }
         }
+        self.check_connection_peripherals(file, c, &ty, &from);
         self.join(file, &ty, &from, &to, &unbound, c.span);
     }
 
@@ -2148,6 +2150,7 @@ impl<'a> Builder<'a> {
                             .has
                             .iter()
                             .chain(l.has.iter())
+                            .filter(|h| !h.props.iter().any(|p| p.key == "when"))
                             .map(|h| h.capability.clone())
                             .collect(),
                     })

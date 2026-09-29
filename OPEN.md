@@ -91,6 +91,11 @@ and leaves here; when a gap is closed its bullet is deleted.
 
 ## Engine: behind the specification
 
+Connection-local `require peripheral.<capability>` now checks instance capabilities, including
+conditional `has ... when=...`, and requires one candidate to satisfy them together. The
+older signal-capability gaps below remain specific to `require signal.*`.
+
+
 - **A capability an instance lacks is absent, not unstated.** A peripheral table is exhaustive,
   so when the surviving instances of an answer do not `has` what a port `require`s, the answer
   should fail rather than be reported as unknown (SPEC §9.7). Today it is a note: the Snips

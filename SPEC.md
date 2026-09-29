@@ -334,6 +334,42 @@ peripheral TIM1 timer {
 - **`has`** marks a capability of the instance, or of one line. Capabilities become facts on the
   lines the peripheral drives (§9.4).
 
+An instance capability can be conditional on the connection's complete pin assignment and
+selected package:
+
+```kdl
+peripheral I2C2 i2c {
+    scl PB10 PB13
+    sda PB11 PB14
+    has bootloader when="scl == PB10 && sda == PB11"
+}
+connect i2c {
+    from mcu scl=PB10 sda=PB11
+    to expansion
+    require peripheral.bootloader
+}
+```
+
+`when=` uses the expression language. Line names resolve to the chosen canonical pin names;
+`package` resolves to the selected package name. The part's pin and package names are valid
+bare enum literals. Unknown names, invalid expressions, and non-boolean results are errors.
+Instance-level conditional capabilities are evaluated per connection and are never stamped
+onto nets or signals. Multiple true declarations of the same capability are alternatives.
+
+`require peripheral.<capability>` in a `connect` requires a flag on its `from` provider.
+The provider must resolve to one part with a peripheral table; explicit `line=pin` answers
+are the usual form. All requirements must be satisfied by one candidate instance that can
+carry every answered line. Requirements may select among otherwise ambiguous candidates;
+facts from different candidates or connections cannot be combined. Missing capabilities
+are errors, including when the part declares no peripheral of the requested kind. These
+requirements take no values or properties and are only supported inside `connect`.
+Unconditional instance capabilities are also available in this scope. Existing signal
+capabilities retain their behavior; line-level `has` does not declare an instance capability.
+
+The vocabulary is open: `bootloader` is a library fact, with no special engine behavior.
+A library using it for ROM interface compatibility does not thereby assert boot entry,
+transceiver enable state, or a complete board programming procedure.
+
 Peripherals describe what is **legal**. They carry no configuration a firmware needs.
 
 ## 6. Blocks and placement

@@ -399,6 +399,8 @@ pub enum Aspect {
     Net,
     /// One piece of information, across every net that carries it.
     Signal,
+    /// A peripheral candidate for one connection.
+    Peripheral,
 }
 
 impl Aspect {
@@ -407,6 +409,7 @@ impl Aspect {
             Aspect::Segment => "segment",
             Aspect::Net => "net",
             Aspect::Signal => "signal",
+            Aspect::Peripheral => "peripheral",
         }
     }
 
@@ -415,6 +418,7 @@ impl Aspect {
             "segment" => Some(Aspect::Segment),
             "net" => Some(Aspect::Net),
             "signal" => Some(Aspect::Signal),
+            "peripheral" => Some(Aspect::Peripheral),
             _ => None,
         }
     }
@@ -746,6 +750,7 @@ pub struct Nc {
 #[derive(Clone, Debug, PartialEq)]
 pub struct Connect {
     pub ty: String,
+    pub requires: Vec<Require>,
     pub sides: Vec<Side>,
     /// Lines of the type this link deliberately leaves unbound: `nc miso`.
     pub unbound: Vec<Unbound>,

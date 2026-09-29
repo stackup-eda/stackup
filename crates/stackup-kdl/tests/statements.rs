@@ -789,3 +789,30 @@ fn a_new_file_from_the_model() {
     let again = read(&text);
     assert_eq!(emit(&again), text);
 }
+
+#[test]
+fn peripheral_connection_requirements_round_trip() {
+    let source = r#"part chip {
+    peripheral I2C2 i2c {
+        has bootloader when="scl == PB10 && sda == PB11"
+        scl PB10 PB13
+        sda PB11 PB14
+    }
+}
+
+design demo {
+    connect i2c {
+        from mcu scl=PB10 sda=PB11
+        to expansion
+        require peripheral.bootloader
+    }
+}
+"#;
+    assert_eq!(emit(&read(source)), source);
+    assert!(!errors("design demo { connect i2c from=mcu to=port { require peripheral.bootloader #true; }; }\n").is_empty());
+    assert!(!errors("part chip { port x { require peripheral.bootloader; }; }\n").is_empty());
+    assert!(
+        !errors("design demo { connect i2c from=mcu to=port { require signal.bootloader; }; }\n")
+            .is_empty()
+    );
+}

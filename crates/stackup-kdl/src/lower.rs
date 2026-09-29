@@ -625,6 +625,13 @@ impl Cx {
             );
             return None;
         };
+        if aspect == Aspect::Peripheral && name(n) != "require" {
+            self.error(
+                at,
+                "peripheral capabilities are declared with `has` and required on a connect",
+            );
+            return None;
+        }
         if fact.is_empty() || fact.contains('.') {
             self.error(at, format!("`{text}` is not `<aspect>.<fact>`"));
             return None;
@@ -682,6 +689,10 @@ impl Cx {
     }
 
     fn require(&mut self, n: &KdlNode) -> Option<Require> {
+        self.require_scoped(n, false)
+    }
+
+    fn require_scoped(&mut self, n: &KdlNode, connection: bool) -> Option<Require> {
         let at = args(n).next().map(|e| e.span().into()).unwrap_or(span(n));
         let fact = self
             .text_arg(n, 0, "fact")
@@ -691,6 +702,10 @@ impl Cx {
         let props = self.properties(n);
         self.no_children(n);
         let (aspect, fact) = fact?;
+        if aspect == Aspect::Peripheral && !connection {
+            self.error(at, "peripheral requirements belong inside a connect");
+            return None;
+        }
         Some(Require {
             aspect,
             fact,
@@ -789,7 +804,18 @@ impl Cx {
         let mut has = Vec::new();
         for c in children(n) {
             match name(c) {
-                "has" => has.extend(self.has(c)),
+                "has" => {
+                    if let Some(h) = self.has(c) {
+                        if h.props.iter().any(|p| p.key == "when") {
+                            self.error(
+                                h.span,
+                                "conditional capabilities belong on the peripheral instance",
+                            );
+                        } else {
+                            has.push(h);
+                        }
+                    }
+                }
                 _ => self.unknown(c, "a peripheral line"),
             }
         }
@@ -1088,6 +1114,7 @@ impl Cx {
         let props = self.known_properties(n, &["from", "to"]);
         let mut sides = Vec::new();
         let mut unbound = Vec::new();
+        let mut requires = Vec::new();
         for p in props {
             let role = if p.key == "from" {
                 SideRole::From
@@ -1153,6 +1180,18 @@ impl Cx {
                         span: span(c),
                     });
                 }
+                "require" => {
+                    if let Some(r) = self.require_scoped(c, true) {
+                        if r.aspect != Aspect::Peripheral
+                            || r.value.is_some()
+                            || !r.props.is_empty()
+                        {
+                            self.error(r.span, "connect requirements use `require peripheral.<capability>` without a value or properties");
+                        } else {
+                            requires.push(r);
+                        }
+                    }
+                }
                 _ => self.unknown(c, "a connect"),
             }
         }
@@ -1165,6 +1204,7 @@ impl Cx {
         Some(Connect {
             ty: ty?,
             sides,
+            requires,
             unbound,
             span: span(n),
         })
