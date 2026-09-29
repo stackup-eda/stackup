@@ -4,8 +4,8 @@
 //! come with it as its features say; `circuit` and `connect` join terminals into nets. Every
 //! problem is a finding and elaboration carries on, so a design is judged whole.
 //!
-//! Two passes per block body, because order carries no meaning: every placement first, then the
-//! wiring, so a `circuit` may name a part placed below it.
+//! Placement and wiring are separate passes because order carries no meaning. Port arguments
+//! also join after every placement exists, so they may name a later placement.
 
 use std::collections::{HashMap, HashSet};
 
@@ -44,6 +44,7 @@ pub fn elaborate(lib: &Library, file: FileId, design: &Block) -> Model {
         pending_notes: Vec::new(),
         pending_values: Vec::new(),
         pending_anchors: Vec::new(),
+        pending_port_joins: Vec::new(),
         nc: Vec::new(),
         frames: Vec::new(),
         report: Report::default(),
@@ -72,6 +73,7 @@ pub fn elaborate(lib: &Library, file: FileId, design: &Block) -> Model {
     let frame = b.new_frame(root, file, None);
     b.block_ports(root, frame, file, design);
     b.body(frame, &design.items);
+    b.join_pending_ports();
     b.finish(design.name.clone())
 }
 
@@ -214,6 +216,8 @@ struct Builder<'a> {
     pending_values: Vec<(usize, usize, Value, Span)>,
     /// Anchor references can name parts placed later in the same block.
     pending_anchors: Vec<(usize, usize, usize, Value, Span)>,
+    /// Port arguments can name placements declared later in the same or an enclosing body.
+    pending_port_joins: Vec<(usize, usize, String, Value, Span)>,
     nc: Vec<(Terminal, FileId, Span)>,
     frames: Vec<Frame>,
     report: Report,
@@ -1355,7 +1359,8 @@ impl<'a> Builder<'a> {
         self.part_ports(inst, pf, decl.file, part);
 
         for (port, value, span) in port_args {
-            self.join_port(frame, inst, &port, &value, span);
+            self.pending_port_joins
+                .push((frame, inst, port, value, span));
         }
 
         self.child_blocks(inst, pf, decl, part.blocks(), &features);
@@ -1545,7 +1550,8 @@ impl<'a> Builder<'a> {
         }
         self.body(bf, &block.items);
         for (port, value, span) in port_args {
-            self.join_port(frame, inst, &port, &value, span);
+            self.pending_port_joins
+                .push((frame, inst, port, value, span));
         }
         // The block's features, after its body: a child reaches the block's placements by bare
         // name, so they have to exist first.
@@ -1554,6 +1560,12 @@ impl<'a> Builder<'a> {
 
     /// A port argument: the link its type implies, from what the argument names to the child's
     /// port.
+    fn join_pending_ports(&mut self) {
+        for (frame, child, port, value, span) in std::mem::take(&mut self.pending_port_joins) {
+            self.join_port(frame, child, &port, &value, span);
+        }
+    }
+
     fn join_port(&mut self, frame: usize, child: usize, port: &str, value: &Value, span: Span) {
         let file = self.frames[frame].file;
         let Some(text) = value.as_str() else {
@@ -2465,7 +2477,9 @@ impl<'a> Builder<'a> {
                 j != inst && &other.path == path && matches!(other.kind, Kind::Part { .. })
             })
         };
-        let mut best: Option<(usize, String)> = None;
+        // Union order can differ from placement order (notably for deferred port arguments).
+        // Break equal-depth ties by instance order so the projected name remains stable.
+        let mut best: Option<(usize, usize, String)> = None;
         for m in members {
             if let Terminal::Line { inst, port, line } = m {
                 if is_self_block(*inst) {
@@ -2484,12 +2498,15 @@ impl<'a> Builder<'a> {
                     (false, true) => format!("{path}/{port}.{line}"),
                     (false, false) => format!("{path}/{port}"),
                 };
-                if best.as_ref().is_none_or(|(d, _)| depth < *d) {
-                    best = Some((depth, name));
+                if best
+                    .as_ref()
+                    .is_none_or(|(d, i, _)| (depth, *inst) < (*d, *i))
+                {
+                    best = Some((depth, *inst, name));
                 }
             }
         }
-        if let Some((_, name)) = best {
+        if let Some((_, _, name)) = best {
             return name;
         }
         // No block port: a part's own contract port — one with several lines, so a jack's
@@ -2504,12 +2521,15 @@ impl<'a> Builder<'a> {
                 }
                 let path = &self.instances[*inst].path;
                 let depth = path.matches('/').count() + 1;
-                if best.as_ref().is_none_or(|(d, _)| depth < *d) {
-                    best = Some((depth, format!("{path}/{port}.{line}")));
+                if best
+                    .as_ref()
+                    .is_none_or(|(d, i, _)| (depth, *inst) < (*d, *i))
+                {
+                    best = Some((depth, *inst, format!("{path}/{port}.{line}")));
                 }
             }
         }
-        if let Some((_, name)) = best {
+        if let Some((_, _, name)) = best {
             return name;
         }
         let passive = |inst: usize| {
@@ -2525,7 +2545,9 @@ impl<'a> Builder<'a> {
                 _ => None,
             })
             .collect();
-        let pick = pins.iter().find(|(i, _)| !passive(*i)).or(pins.first());
+        let pick = pins
+            .iter()
+            .min_by_key(|(inst, pin)| (passive(*inst), *inst, pin.as_str()));
         match pick {
             Some((inst, pin)) => {
                 let d = self.instances[*inst]

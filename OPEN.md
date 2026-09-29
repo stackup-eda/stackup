@@ -27,7 +27,11 @@ and leaves here; when a gap is closed its bullet is deleted.
 - **Pin roles.** `role` exists; its vocabulary does not.
 - **Two selects on one net.** Two chip-selects joined by a `circuit` are not seen by the bus.
 - **Package selection by intent.** The generic parts take their body from their `intent` and a
-  board's purchasing policy; that policy is outside the specification.
+  board's purchasing policy; that policy is outside the specification. The same policy needs a
+  way to supply exact orderable choices for parts placed inside library blocks, where the board
+  cannot add `manufacturer=`, `mpn=`, or distributor IDs to the child `place` statements. Whether
+  a stock rule selects by part, value and package, a board states order fields by child path, or
+  both are needed is unsettled (stackup-eda/stackup#2).
 - **The expression function set** beyond the functions listed in SPEC §4.3.
 - **Re-exporting a child's port.** A block that offers a child's port as its own — a node sheet
   whose `v3v3` is its SBC's `vout`, whose `link` is the SBC's `uart` — joins them line by line

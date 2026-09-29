@@ -841,6 +841,58 @@ part power-jack {
 "#;
 
 #[test]
+fn placement_port_arguments_resolve_later_placements() {
+    let fx = Fixture::new(
+        "forward-port-arguments",
+        &[
+            ("stackup/passives.kdl", PASSIVES),
+            ("stackup/connectors.kdl", CONNECTORS),
+            (
+                "board.kdl",
+                r#"
+use "@stackup/passives"
+use "@stackup/connectors"
+
+part load {
+    pin V power_in
+    pin G power_in
+    port supply type=power { line rail pin=V; line gnd pin=G }
+}
+
+design demo {
+    stock { packages imperial="0603" }
+    place pull-up Rpd node=Rs.b rail=V5.out value="10kΩ"
+    place load U supply=V5.out
+    place resistor Rs value="1kΩ"
+    place power-jack V5 voltage="5V"
+}
+"#,
+            ),
+        ],
+    );
+    let model = fx.model("board.kdl", "demo");
+    assert!(model.report.is_empty(), "{}", model.report.render());
+
+    let pin = |path: &str, name: &str| {
+        let inst = model.parts().find(|(_, i)| i.path == path).unwrap().0;
+        Terminal::Pin {
+            inst,
+            pin: name.into(),
+        }
+    };
+    assert!(model.nets.iter().any(|net| {
+        [pin("Rpd", "A"), pin("Rs", "B")]
+            .iter()
+            .all(|terminal| net.members.contains(terminal))
+    }));
+    assert!(model.nets.iter().any(|net| {
+        [pin("Rpd", "B"), pin("U", "V"), pin("V5", "P1")]
+            .iter()
+            .all(|terminal| net.members.contains(terminal))
+    }));
+}
+
+#[test]
 fn a_part_with_features_and_a_self_block() {
     let fx = Fixture::new(
         "features",
@@ -939,7 +991,7 @@ design demo {
         n["V5/out.gnd"],
         pins("J1.P2 U1.GND C1.B U1.SEL U2.GND C2.B")
     );
-    assert_eq!(n["Net-(U2-EN)"], pins("U1.OUT U2.EN R1.A"));
+    assert_eq!(n["Net-(U1-OUT)"], pins("U1.OUT U2.EN R1.A"));
 
     let (text, report) = netlist::kicad(
         &Library::load(
