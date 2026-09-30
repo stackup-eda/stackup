@@ -47,10 +47,9 @@ and leaves here; when a gap is closed its bullet is deleted.
 - **A shunt's tolerance.** A placement can now carry `tolerance=` into the KiCad BOM fields.
   Deriving measurement accuracy from it and checking that against a circuit requirement are
   still open.
-- **What a board says about a sheet's part.** A designator is a board's to choose and a sheet's
-  part to carry, and a sheet placed on several boards has no word for it. There is no `designate`
-  by path, so a sheet that belongs to one board states its designators itself, and one shared by
-  several cannot.
+- **What a board says about a sheet's part.** A reusable sheet exposes optional text parameters
+  for child designators and forwards them on child placements (SPEC §6.2). This lets each board
+  choose names through the sheet's public interface. There is no arbitrary `designate` by path.
 - **Fitted or not.** A land kept for a module that is not yet chosen is placed and not soldered,
   and nothing in the format says so beyond a note; an assembly listing cannot read a note.
 - **A placement is an aspect.** A segment, a net and a signal are what a fact about the

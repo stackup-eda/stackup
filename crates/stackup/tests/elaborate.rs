@@ -2227,3 +2227,94 @@ design demo {
         assert!(elaborate(&lib, file, design).report.has_errors(), "{label}");
     }
 }
+
+#[test]
+fn optional_child_designators_reserve_names_and_forward_through_blocks() {
+    let fx = Fixture::new(
+        "optional-child-designators",
+        &[(
+            "board.kdl",
+            r#"
+part resistor { reference R; pin P passive; package p footprint="R" { pad P 1 } }
+block child {
+    param ref-R text default=#null
+    place resistor R designator=ref-R
+}
+block parent {
+    param ref-child-R text default=#null
+    place child child ref-R=ref-child-R
+}
+design demo {
+    place parent automatic
+    place parent named ref-child-R="R1"
+    place resistor explicit designator=R3
+    place parent another
+}
+"#,
+        )],
+    );
+    let model = fx.model("board.kdl", "demo");
+    assert!(model.report.is_empty(), "{}", model.report.render());
+    let names: Vec<_> = model
+        .parts()
+        .map(|(_, i)| (i.path.as_str(), i.designator.as_deref().unwrap()))
+        .collect();
+    assert_eq!(
+        names,
+        [
+            ("automatic/child/R", "R2"),
+            ("named/child/R", "R1"),
+            ("explicit", "R3"),
+            ("another/child/R", "R4")
+        ]
+    );
+}
+
+#[test]
+fn null_root_designator_preserves_callers_name() {
+    let fx = Fixture::new(
+        "null-root-designator",
+        &[(
+            "board.kdl",
+            r#"
+part resistor { reference R; pin P passive; package p footprint="R" { pad P 1 } }
+block wrapper {
+    param ref-root text default=#null
+    place resistor as=self designator=ref-root
+}
+design demo { place wrapper r designator="SHUNT" }
+"#,
+        )],
+    );
+    let model = fx.model("board.kdl", "demo");
+    assert!(model.report.is_empty(), "{}", model.report.render());
+    assert_eq!(
+        model.parts().next().unwrap().1.designator.as_deref(),
+        Some("SHUNT")
+    );
+}
+
+#[test]
+fn duplicate_explicit_child_designators_are_rejected() {
+    let fx = Fixture::new(
+        "duplicate-child-designators",
+        &[(
+            "board.kdl",
+            r#"
+part resistor { reference R; pin P passive; package p footprint="R" { pad P 1 } }
+block wrapper {
+    param ref-R text default=#null
+    place resistor R designator=ref-R
+}
+design demo { place wrapper a ref-R="R1"; place wrapper b ref-R="R1" }
+"#,
+        )],
+    );
+    let model = fx.model("board.kdl", "demo");
+    assert!(
+        model
+            .report
+            .render()
+            .contains("`R1` is printed on two parts")
+    );
+}

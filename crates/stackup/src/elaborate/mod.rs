@@ -1285,8 +1285,10 @@ impl<'a> Builder<'a> {
                     }
                     "package" => {}
                     "designator" => {
-                        self.instances[inst].designator_word =
-                            Some(self.text_value(frame, &a.value))
+                        if self.resolve_value(frame, &a.value) != Value::Null {
+                            self.instances[inst].designator_word =
+                                Some(self.text_value(frame, &a.value));
+                        }
                     }
                     "reference" => {
                         self.instances[inst].reference_prefix =
@@ -2293,6 +2295,13 @@ impl<'a> Builder<'a> {
 
     fn finish(mut self, name: String) -> Model {
         // Designators, in placement order: a word printed whole, or a prefix numbered under.
+        let reserved: HashSet<String> = self
+            .instances
+            .iter()
+            .enumerate()
+            .filter(|(i, _)| self.part_of(*i).is_some())
+            .filter_map(|(_, instance)| instance.designator_word.clone())
+            .collect();
         let mut counters: HashMap<String, usize> = HashMap::new();
         let mut taken: HashSet<String> = HashSet::new();
         for i in 0..self.instances.len() {
@@ -2311,8 +2320,13 @@ impl<'a> Builder<'a> {
                         })
                         .unwrap_or_else(|| "U".into());
                     let n = counters.entry(prefix.clone()).or_insert(0);
-                    *n += 1;
-                    format!("{prefix}{n}")
+                    loop {
+                        *n += 1;
+                        let candidate = format!("{prefix}{n}");
+                        if !reserved.contains(&candidate) {
+                            break candidate;
+                        }
+                    }
                 }
             };
             if !taken.insert(designator.clone()) {

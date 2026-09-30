@@ -1,6 +1,6 @@
 [package]
 name = "stackup-eda"
-version = "0.1.3"
+version = "0.2.0"
 edition.workspace = true
 rust-version.workspace = true
 description = "Elaborates a stackup design and writes what a PCB tool imports"
@@ -16,5 +16,5 @@ name = "stackup"
 path = "src/main.rs"
 
 [dependencies]
-stackup-kdl = { package = "stackup-eda-parser", path = "../stackup-kdl", version = "0.1.0" }
+stackup-kdl = { package = "stackup-eda-parser", path = "../stackup-kdl", version = "0.2.0" }
 miette = { version = "7.6", default-features = false, features = ["fancy-no-syscall"] }

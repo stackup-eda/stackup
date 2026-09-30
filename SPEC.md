@@ -448,6 +448,13 @@ and record a note. Any placement takes `note=`, and two
 properties about what the silkscreen prints: `reference=<prefix>` (`LED`, numbered in placement
 order — `LED1`, `LED2`) and `designator=<word>` (`PXL`, whole, for a part there is one of). A
 designator is an export artifact; nothing in a design refers to a part by one.
+A reusable part or block can expose child names with optional text parameters, for example
+`param ref-R text default=#null` and `place resistor R designator=ref-R`.
+A caller supplies `ref-R="R17"`; nested blocks forward the parameter explicitly.
+A null designator leaves automatic numbering (or a caller's root designator) unchanged.
+Automatic numbering skips all explicitly assigned designators, including later placements;
+two explicit assignments of the same name remain an error.
+
 
 A part placed for a particular pin can say `anchor=<placement.pin>`: for example, after
 `place chip controller`, write `place capacitor bypass anchor=controller.VCC`. `controller` is the
