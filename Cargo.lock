@@ -108,7 +108,7 @@ dependencies = [
 
 [[package]]
 name = "stackup-eda"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "miette",
  "stackup-eda-parser",
@@ -116,7 +116,7 @@ dependencies = [
 
 [[package]]
 name = "stackup-eda-parser"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "kdl",
  "miette",
