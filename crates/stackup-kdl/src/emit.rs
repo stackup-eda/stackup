@@ -404,6 +404,14 @@ impl W {
                     }
                     self.line(&head);
                 }
+                BlockItem::Share(n) => {
+                    let mut head = "share".to_string();
+                    for p in &n.pins {
+                        let _ = write!(head, " {}", ident(&p.to_string()));
+                    }
+                    let _ = write!(head, " note={}", quote(&n.note));
+                    self.line(&head);
+                }
                 BlockItem::Scope(s) => self.stmt(format!("scope {}", ident(&s.name)), true, |w| {
                     w.block_items(&s.items)
                 }),

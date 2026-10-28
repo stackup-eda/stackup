@@ -47,6 +47,8 @@ pub fn elaborate(lib: &Library, file: FileId, design: &Block) -> Model {
         pending_anchors: Vec::new(),
         pending_port_joins: Vec::new(),
         nc: Vec::new(),
+        shared: Vec::new(),
+        pin_uses: Vec::new(),
         frames: Vec::new(),
         report: Report::default(),
         imperial: None,
@@ -192,6 +194,19 @@ struct LineInfo {
     ty: Option<String>,
 }
 
+/// One pin named once by a link: by an answer (`scl=PB6`) or as a side (`from mcu.PA2`).
+struct PinUse {
+    inst: usize,
+    /// The pin, by its own name.
+    pin: String,
+    /// The name the link used, which may be one of the pin's `also` names.
+    given: String,
+    /// The use as written, for a finding: `scl=PB6`, or `mcu.PA2`.
+    written: String,
+    file: FileId,
+    span: Span,
+}
+
 struct TypeInfo {
     name: String,
     lines: Vec<LineInfo>,
@@ -224,6 +239,10 @@ struct Builder<'a> {
     /// Port arguments can name placements declared later in the same or an enclosing body.
     pending_port_joins: Vec<(usize, usize, String, Value, Span)>,
     nc: Vec<(Terminal, FileId, Span)>,
+    /// Pins a `share` declares: allowed to be named by more than one link.
+    shared: Vec<(Terminal, FileId, Span)>,
+    /// Every pin a link names, for the `once` check, under the name it used.
+    pin_uses: Vec<PinUse>,
     frames: Vec<Frame>,
     report: Report,
     imperial: Option<String>,
@@ -1066,6 +1085,18 @@ impl<'a> Builder<'a> {
                         }
                     }
                 }
+                BlockItem::Share(s) => {
+                    let file = self.frames[frame].file;
+                    for pin in &s.pins {
+                        match self.resolve(frame, pin) {
+                            Ok(Resolved::Pin(i, p)) => self
+                                .shared
+                                .push((Terminal::Pin { inst: i, pin: p }, file, s.span)),
+                            Ok(_) => self.error(file, s.span, format!("`{pin}` is not a pin")),
+                            Err(e) => self.error(file, s.span, e),
+                        }
+                    }
+                }
                 _ => {}
             }
         }
@@ -1850,6 +1881,19 @@ impl<'a> Builder<'a> {
                     continue;
                 }
             };
+            // A pin as a side (`from mcu.PA2`) is a use of it, under the name written.
+            if let Resolved::Pin(inst, pin) = &target {
+                let written = side.target.to_string();
+                let given = written.rsplit('.').next().unwrap_or(&written).to_string();
+                self.pin_uses.push(PinUse {
+                    inst: *inst,
+                    pin: pin.clone(),
+                    given,
+                    written,
+                    file,
+                    span: side.span,
+                });
+            }
             let Some(lines) = self.side_lines(frame, &ty, &target, &side.answers, side.span) else {
                 continue;
             };
@@ -1946,6 +1990,16 @@ impl<'a> Builder<'a> {
                     .and_then(|r| self.point(&r).map(|t| (r, t)))
                 {
                     Ok((r, t)) => {
+                        if let Resolved::Pin(owner, pin) = &r {
+                            self.pin_uses.push(PinUse {
+                                inst: *owner,
+                                pin: pin.clone(),
+                                given: text.to_string(),
+                                written: format!("{}={text}", a.key),
+                                file,
+                                span: a.span,
+                            });
+                        }
                         if let Resolved::Pin(_, pin) = &r
                             && let Some(c) =
                                 self.check_peripheral(file, a.span, *inst, ty, line, text, pin)
@@ -2459,7 +2513,12 @@ impl<'a> Builder<'a> {
         facts::check(&mut self, &nets);
 
         // A pin declared no-connect that is joined to anything.
-        for (t, file, span) in std::mem::take(&mut self.nc) {
+        let declared_nc = std::mem::take(&mut self.nc);
+        let mut nc: Vec<Terminal> = Vec::new();
+        for (t, file, span) in declared_nc {
+            if !nc.contains(&t) {
+                nc.push(t.clone());
+            }
             let Terminal::Pin { inst, pin } = &t else {
                 continue;
             };
@@ -2483,10 +2542,13 @@ impl<'a> Builder<'a> {
             }
         }
 
+        self.check_pin_uses(&nc);
+
         Model {
             name,
             instances: self.instances,
             nets,
+            nc,
             imperial: self.imperial,
             report: self.report,
         }
@@ -2495,6 +2557,90 @@ impl<'a> Builder<'a> {
     /// A name for a net nobody named: the highest block port on it — skipping the ports of a
     /// shunt block, whose `node` is the pin it hangs on — else a pin on a part that is not a
     /// passive, else its first pin.
+    /// A pin used twice (SPEC §5.2, §12): a `once` pin named by two uses, or a pin named under two
+    /// of its names, unless a `share` declares it. And a `share` that is stale, or on a pin that
+    /// is also declared no-connect.
+    fn check_pin_uses(&mut self, nc: &[Terminal]) {
+        let uses = std::mem::take(&mut self.pin_uses);
+        let shared = std::mem::take(&mut self.shared);
+        let shared_pins: HashSet<&Terminal> = shared.iter().map(|(t, _, _)| t).collect();
+        let mut groups: Vec<((usize, &str), Vec<&PinUse>)> = Vec::new();
+        for u in &uses {
+            let key = (u.inst, u.pin.as_str());
+            match groups.iter_mut().find(|(k, _)| *k == key) {
+                Some((_, g)) => g.push(u),
+                None => groups.push((key, vec![u])),
+            }
+        }
+        for ((inst, pin), group) in &groups {
+            if group.len() < 2 {
+                continue;
+            }
+            let once = self
+                .part_of(*inst)
+                .and_then(|p| p.pins().find(|q| q.name == *pin))
+                .is_some_and(|q| q.once);
+            let mut names: Vec<&str> = group.iter().map(|u| u.given.as_str()).collect();
+            names.sort();
+            names.dedup();
+            if !once && names.len() < 2 {
+                continue;
+            }
+            let terminal = Terminal::Pin {
+                inst: *inst,
+                pin: pin.to_string(),
+            };
+            if shared_pins.contains(&terminal) {
+                continue;
+            }
+            let path = self.instances[*inst].path.clone();
+            let written = group
+                .iter()
+                .map(|u| format!("`{}`", u.written))
+                .collect::<Vec<_>>()
+                .join(", ");
+            let why = if names.len() > 1 {
+                format!("under {} of its names", names.len())
+            } else {
+                "and it is a `once` pin".to_string()
+            };
+            let second = group[1];
+            self.error(
+                second.file,
+                second.span,
+                format!(
+                    "`{path}.{pin}` is used {} times ({written}), {why}; if that is deliberate, declare `share {path}.{pin} note=…`",
+                    group.len()
+                ),
+            );
+        }
+        for (t, file, span) in &shared {
+            let Terminal::Pin { inst, pin } = t else {
+                continue;
+            };
+            let path = self.instances[*inst].path.clone();
+            if nc.contains(t) {
+                self.error(
+                    *file,
+                    *span,
+                    format!("`{path}.{pin}` is declared both shared and no-connect"),
+                );
+            }
+            let count = uses
+                .iter()
+                .filter(|u| u.inst == *inst && &u.pin == pin)
+                .count();
+            if count < 2 {
+                let users = if count == 0 { "no link uses it" } else { "only one link uses it" };
+                self.warning(
+                    *file,
+                    *span,
+                    format!("`{path}.{pin}` is shared, but {users}; a shared pin is used by more than one"),
+                );
+            }
+        }
+    }
+
     fn derived_net_name(&self, members: &[Terminal]) -> String {
         let is_self_block = |inst: usize| {
             let path = &self.instances[inst].path;

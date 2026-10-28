@@ -452,6 +452,28 @@ fn numeric_names_and_nc() {
 }
 
 #[test]
+fn share() {
+    let text = "design d {\n    share mcu.PA14 note=\"SWCLK for the first flash; SCL once firmware runs\"\n}\n";
+    let file = read(text);
+    let d = file.designs().next().unwrap();
+    let share = match &d.items[0] {
+        BlockItem::Share(s) => s,
+        other => panic!("{other:?}"),
+    };
+    assert_eq!(
+        share.pins.iter().map(|p| p.to_string()).collect::<Vec<_>>(),
+        ["mcu.PA14"]
+    );
+    assert_eq!(share.note, "SWCLK for the first flash; SCL once firmware runs");
+    assert_eq!(emit(&file), text);
+    one_error("design d { share note=\"why\" }", "`share` needs at least one pin");
+    one_error(
+        "design d { share mcu.PA14 }",
+        "`share` needs a `note=` saying why the pin is shared",
+    );
+}
+
+#[test]
 fn what_is_reported() {
     one_error("part { pin A passive }", "`part` needs a name");
     one_error(

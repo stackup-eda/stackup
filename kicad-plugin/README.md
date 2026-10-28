@@ -2,8 +2,8 @@
 
 The PCB editor has three stackup actions:
 
-- **Sync PCB from stackup** exports the linked KDL design and updates electrical footprints, pads, and nets. Existing placement, routing, and KiCad `board_only` footprints are retained.
-- **Repeat arrangement** copies selected footprints and connected copper to sibling instances identified by their `Stackup Path` fields.
+- **Sync PCB from stackup** exports the linked KDL design and updates electrical footprints, pads, and nets. Existing placement, routing, and KiCad `board_only` footprints are retained. A pad the KDL declares `nc` is cleared to no net; a pad the KDL does not mention keeps its net.
+- **Repeat arrangement** copies selected footprints and connected copper to sibling instances identified by their `Stackup Path` fields. When no one selected part is the anchor (a block with no part of its own), it asks which part to measure from.
 - **Place at anchor pad** uses `Stackup Anchor`, `Stackup Spot`, `Stackup Pours`, and `Stackup Vias` fields already on footprints. KDL `anchor=host.PIN` on a part exports the host's physical pad to `Stackup Anchor`; optional `spot="dx dy rotation"` exports an exact offset. KDL does not emit pours or vias yet.
 
 ## Install
@@ -38,3 +38,15 @@ To sync a closed board without opening KiCad, use KiCad's bundled Python:
 ```
 
 The headless command refuses to write a board open in KiCad. The action plugin works on the editor's open board instead; save the board afterward.
+
+Anchor chains are placed with hosts before their dependents, both during sync
+of new footprints and with **Place at anchor pad**. For example, an inductor
+anchored to a regulator moves before a capacitor anchored to that inductor.
+Hosts outside the selection retain their current positions. Cyclic anchor
+chains and components depending on them stay in place and are reported.
+
+Run the anchor ordering regression tests with KiCad's bundled Python:
+
+```sh
+python3 -m unittest discover -s kicad-plugin/tests
+```

@@ -939,6 +939,7 @@ impl Cx {
                 "circuit" => self.circuit(c).map(BlockItem::Circuit),
                 "connect" => self.connect(c).map(BlockItem::Connect),
                 "nc" => self.nc(c).map(BlockItem::Nc),
+                "share" => self.share(c).map(BlockItem::Share),
                 "set" | "add" | "claim" => self.terminal_fact(c).map(BlockItem::Fact),
                 // A block's child block is a feature of it, as a part's are; a scope and a
                 // design have none, so there the keyword falls through to "unknown".
@@ -1158,6 +1159,38 @@ impl Cx {
         let note = self.take_text(&mut props, "note");
         self.no_children(n);
         Some(Nc {
+            pins,
+            note,
+            span: span(n),
+        })
+    }
+
+    fn share(&mut self, n: &KdlNode) -> Option<Share> {
+        let mut pins = Vec::new();
+        for e in args(n) {
+            match value_of(e) {
+                Value::String(s) | Value::Name(s) => {
+                    pins.extend(self.reference(&s, e.span().into()))
+                }
+                v => self.error(
+                    e.span().into(),
+                    format!("`share` names pins, not {}", v.describe()),
+                ),
+            }
+        }
+        if pins.is_empty() {
+            self.error(span(n), "`share` needs at least one pin");
+        }
+        let mut props = self.known_properties(n, &["note"]);
+        let note = self.take_text(&mut props, "note");
+        self.no_children(n);
+        // The note is the point: sharing a pin is deliberate, and the reason is what a reader
+        // needs to check it.
+        let Some(note) = note else {
+            self.error(span(n), "`share` needs a `note=` saying why the pin is shared");
+            return None;
+        };
+        Some(Share {
             pins,
             note,
             span: span(n),

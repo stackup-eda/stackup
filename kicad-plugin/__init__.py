@@ -140,11 +140,13 @@ class StackupRepeat(pcbnew.ActionPlugin):
         try:
             for module in _RELOADABLE:
                 importlib.reload(module)
-            outcome = _repeat.repeat(board)
+            outcome = _repeat.repeat(board, self._choose)
         except Exception as error:  # a plugin crash should still explain itself
             _say("Could not repeat", f"{type(error).__name__}: {error}", error=True)
             return
 
+        if outcome.cancelled:
+            return
         pcbnew.Refresh()
         if outcome.quiet():
             path, designator = outcome.anchor
@@ -155,6 +157,38 @@ class StackupRepeat(pcbnew.ActionPlugin):
             )
             return
         _say("Repeat arrangement", outcome.summary(), error=bool(outcome.problems))
+
+    def _choose(self, options):
+        """Asks which selected part the arrangement is measured from, when the paths cannot say.
+
+        The last answer is offered first, by the part's place in its instance rather than its
+        whole path, so arranging `s1`, pressing, nudging and pressing again is one click each time
+        — and so is moving on to arrange `s4` around the same part.
+        """
+        import wx
+
+        labels = [f"{designator}  ({path})" for path, designator in options]
+        dialog = wx.SingleChoiceDialog(
+            None,
+            "No one selected part is above the others. Which one is the arrangement around?\n"
+            "Each copy is placed relative to that part's counterpart on its instance.",
+            "Repeat arrangement",
+            labels,
+        )
+        # Where each option sits within the instance: `s1/well` and `s4/well` are both `well`.
+        depth = len(_repeat._common(path for path, _ in options))
+        within = [_repeat.segments(path)[depth:] for path, _ in options]
+        try:
+            remembered = getattr(self, "_last_anchor", None)
+            if remembered in within:
+                dialog.SetSelection(within.index(remembered))
+            if dialog.ShowModal() != wx.ID_OK:
+                return None
+            index = dialog.GetSelection()
+        finally:
+            dialog.Destroy()
+        self._last_anchor = within[index]
+        return options[index][0]
 
 
 def _sync(board):

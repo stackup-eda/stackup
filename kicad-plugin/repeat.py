@@ -17,7 +17,9 @@ transform, and the transform is `anchor.exact` — the one that already carries 
 regulator drawing round with a turned host — fed with an offset *measured* off the board rather than
 stated by the design.
 
-The button reads the selection: the anchor and the parts arranged about it. Only what is selected
+The button reads the selection: the anchor and the parts arranged about it. When the paths cannot
+say which part is the anchor — a block with no part of its own, everything side by side under it —
+the button asks, from the selected parts that have siblings to repeat onto. Only what is selected
 is repeated, which is what lets an instance's other parts — a shunt's filter that lives by the MCU
 rather than by the bridge — stay where they are on every copy. Nothing here judges the result any
 more than `anchor` does: DRC is what says whether the copies collide with anything.
@@ -76,13 +78,7 @@ def anchor_of(selected, present) -> str | None:
         return None
     if len(selected) > 1 and all(is_within(path, selected[0]) for path in selected):
         return selected[0]
-    common = segments(selected[0])
-    for path in selected[1:]:
-        parts = segments(path)
-        keep = 0
-        while keep < min(len(common), len(parts)) and common[keep] == parts[keep]:
-            keep += 1
-        common = common[:keep]
+    common = _common(selected)
     if len(selected) == 1:
         # One part on its own is the thing being arranged, never the thing it is arranged around.
         common.pop()
@@ -95,6 +91,35 @@ def anchor_of(selected, present) -> str | None:
     if len(selected) > 1 and len(segments(selected[0])) < len(segments(selected[1])):
         return selected[0]
     return None
+
+
+def anchor_choices(selected, kinds: dict) -> list[str]:
+    """The selected parts any one of which could be the anchor, for when `anchor_of` has none.
+
+    A block that is only a namespace — a panel's slot, whose switch, contacts and passives all sit
+    side by side under `s1` with no part at `s1` itself — leaves `anchor_of` with nothing to say,
+    and rightly: which of ten parts the rest are arranged around is not in the paths. It is in the
+    person's head, so this is the list to ask them from. Each part qualifies if it has siblings to
+    repeat onto; the selection must sit on one instance, since a selection spanning two has no
+    frame whatever is picked. Empty when there is nothing worth asking.
+    """
+    selected = sorted(set(selected), key=_natural_path)
+    if len(selected) < 2 or not _common(selected):
+        return []
+    return [path for path in selected if siblings(path, kinds)]
+
+
+def _common(paths) -> list[str]:
+    """The segments every one of `paths` starts with."""
+    paths = list(paths)
+    common = segments(paths[0])
+    for path in paths[1:]:
+        parts = segments(path)
+        keep = 0
+        while keep < min(len(common), len(parts)) and common[keep] == parts[keep]:
+            keep += 1
+        common = common[:keep]
+    return common
 
 
 def siblings(anchor_path: str, kinds: dict) -> list[str]:
@@ -218,6 +243,8 @@ class Repeated:
         self.drawn = 0
         self.already = 0
         self.problems: list[str] = []
+        #: The person was asked which part to measure from and closed the question unanswered.
+        self.cancelled = False
 
     def quiet(self) -> bool:
         """A run where something moved and nothing needs saying — the same bargain the anchor
@@ -407,8 +434,13 @@ def _present(board) -> set:
     return found
 
 
-def repeat(board) -> Repeated:
-    """Copies the selected arrangement onto every other instance of the block it belongs to."""
+def repeat(board, choose=None) -> Repeated:
+    """Copies the selected arrangement onto every other instance of the block it belongs to.
+
+    `choose(options)` is asked for the anchor when the selection names none on its own; `options`
+    are `(path, designator)` pairs, and it returns one of the paths, or `None` to stop. Without it,
+    such a selection is reported as having no anchor.
+    """
     outcome = Repeated()
     selected = [f for f in board.GetFootprints() if f.IsSelected()]
     outcome.selected = len(selected)
@@ -432,6 +464,13 @@ def repeat(board) -> Repeated:
         return outcome
 
     anchor_path = anchor_of(chosen, by_path)
+    if anchor_path is None and choose is not None:
+        options = anchor_choices(chosen, {p: _kind(f) for p, f in by_path.items()})
+        if options:
+            anchor_path = choose([(path, chosen[path].GetReference()) for path in options])
+            if anchor_path is None:
+                outcome.cancelled = True
+                return outcome
     if anchor_path is None:
         return outcome
     host = by_path[anchor_path]

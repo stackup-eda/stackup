@@ -584,6 +584,7 @@ pub enum BlockItem {
     Circuit(Circuit),
     Connect(Connect),
     Nc(Nc),
+    Share(Share),
     /// `set <terminal> <aspect>.<fact> …` — a fact on a terminal's net.
     Fact(TerminalFact),
     Scope(Scope),
@@ -762,6 +763,15 @@ pub struct CircuitLeg {
 pub struct Nc {
     pub pins: Vec<Reference>,
     pub note: Option<String>,
+    pub span: Span,
+}
+
+/// `share <pin>… note="…"` — pins deliberately named by more than one link. A `once` pin, or a pin
+/// under two of its names, is otherwise used once.
+#[derive(Clone, Debug, PartialEq)]
+pub struct Share {
+    pub pins: Vec<Reference>,
+    pub note: String,
     pub span: Span,
 }
 

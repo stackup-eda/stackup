@@ -74,7 +74,9 @@ class Component:
     #: library changed, a drawing never made, a bundled land with no install to name one from. Read
     #: it with `parse_models`.
     models: str = ""
-    #: pad number -> net name
+    #: pad number -> net name; `""` for a pad the design declares no-connect, which the sync clears
+    #: rather than leaving on whatever an earlier revision wired it to. A pad that is not here at
+    #: all is one the design says nothing about.
     pads: dict[str, str] = field(default_factory=dict)
 
 
@@ -163,13 +165,16 @@ def parse(text: str) -> dict[str, Component]:
                 component.models = _value(prop, "value")
         components[ref] = component
 
-    # Connectivity is stored per net; the board is updated per pad, so invert it here.
+    # Connectivity is stored per net; the board is updated per pad, so invert it here. A declared
+    # no-connect arrives as KiCad writes one, a one-pad `unconnected-(…)` net whose pin type ends
+    # `+no_connect`, and is recorded as no net at all.
     for net in _children(_section(tree, "nets"), "net"):
         name = _value(net, "name")
         for node in _children(net, "node"):
             ref, pad = _value(node, "ref"), _value(node, "pin")
             if ref in components and pad:
-                components[ref].pads[pad] = name
+                nc = _value(node, "pintype").endswith("+no_connect")
+                components[ref].pads[pad] = "" if nc else name
 
     return components
 

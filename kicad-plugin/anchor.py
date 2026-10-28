@@ -90,6 +90,27 @@ def slots(anchored) -> dict[str, int]:
     return assigned
 
 
+def placement_order(anchored) -> tuple[list[str], list[str]]:
+    """Hosts before their dependents; cyclic chains are returned separately.
+
+    Only items being moved belong here. A host outside that set stays at its
+    existing position. Preserve input order wherever no dependency requires a
+    change, so pad slots and independent placement remain predictable.
+    """
+    pending = dict(anchored)
+    ordered = []
+    while pending:
+        ready = [name for name, text in pending.items()
+                 if reference(text or "") is None
+                 or reference(text)[0] not in pending]
+        if not ready:
+            return ordered, list(pending)
+        for name in ready:
+            ordered.append(name)
+            del pending[name]
+    return ordered, []
+
+
 def on_board(board) -> list[tuple[str, str]]:
     """Every footprint on `board` that records an anchor, in designator order.
 
@@ -426,8 +447,17 @@ def snap(board) -> Snapped:
     # does not depend on what happened to be selected.
     assigned = slots(on_board(board))
 
-    for footprint in selected:
-        designator = footprint.GetReference()
+    by_ref = {f.GetReference(): f for f in selected}
+    order, cyclic = placement_order(
+        (name, f.GetFieldText(FIELD) if f.HasField(FIELD) else "")
+        for name, f in by_ref.items()
+    )
+    if cyclic:
+        outcome.problems.append(
+            "Cyclic anchor chain; left in place: " + ", ".join(cyclic)
+        )
+    for designator in order:
+        footprint = by_ref[designator]
         text = footprint.GetFieldText(FIELD) if footprint.HasField(FIELD) else ""
         target = reference(text or "")
         if target is None:

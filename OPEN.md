@@ -26,6 +26,14 @@ and leaves here; when a gap is closed its bullet is deleted.
 - **Naming links.** Links are unnamed; `current=` on a `circuit` is not yet specified.
 - **Pin roles.** `role` exists; its vocabulary does not.
 - **Two selects on one net.** Two chip-selects joined by a `circuit` are not seen by the bus.
+- **Whether a shared pin's uses are compatible.** `share` (SPEC §6.5) says a pin used by two
+  links is deliberate, and nothing checks that the uses get along: that a debugger clocking SWCLK
+  is harmless to the sensor whose SCL is the same net, that the I²C pull-up does not hold a strap
+  on that pin the wrong way at reset (a strap's `require net.rest` is already checked). The
+  Workshop's Near face (STM32C011J6, SWD then I²C on pad 8) raised it. The likely shape is a body
+  on `share` stating how the uses divide — which link holds while the debugger has the chip, which
+  once the firmware runs — and the states in "A net has a level, and a board has states" below
+  are where a check of each use against the others would be evaluated.
 - **Package selection by intent.** The generic parts take their body from their `intent` and a
   board's purchasing policy; that package policy is outside the specification. A board can now
   select MPNs for parts inside library blocks with `match placement` (§6.6); whether a similar
@@ -120,8 +128,6 @@ older signal-capability gaps below remain specific to `require signal.*`.
   legs to the three consumers and an `assert` over their `counter`s is the shape (SPEC §8.3,
   §11.4), and it is unchecked until type-level assertions are; until then the design says it in
   a comment.
-- **`once` is not checked.** Two links naming a `once` pin should be a finding (SPEC §12) and
-  are not yet, as of the Snips port.
 - **A part name that starts with a digit** (`2n7002`) is a KDL number, not a name, and a
   placement of it is a parse error. The library spells such parts with a prefix (`nfet-2n7002`);
   whether the reader should accept a quoted string in name position is open.

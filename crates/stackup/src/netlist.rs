@@ -287,5 +287,37 @@ fn nets(lib: &Library, model: &Model, report: &mut Report) -> List {
         }
         list.push(entry);
     }
+
+    // Declared no-connects, as KiCad's own netlist writes them: a net of one pad, named for it,
+    // whose pin type carries `+no_connect`. Without them a pin the design has since cut loose
+    // would only be absent, and a board updated from the netlist keeps whatever it was wired to.
+    for t in &model.nc {
+        let Terminal::Pin { inst, pin } = t else {
+            continue;
+        };
+        let Some(labels) = pads.get(inst).and_then(|p| p.get(pin)) else {
+            continue;
+        };
+        let designator = model.instances[*inst].designator.clone().unwrap_or_default();
+        let kind = kinds
+            .get(inst)
+            .and_then(|k| k.get(pin))
+            .cloned()
+            .unwrap_or_else(|| "passive".to_string());
+        for label in labels {
+            code += 1;
+            let mut entry = List::named("net");
+            entry.field("code", code.to_string());
+            entry.field("name", format!("unconnected-({designator}-{pin}-Pad{label})"));
+            entry.field("class", "Default");
+            let mut node = List::named("node");
+            node.field("ref", &designator);
+            node.field("pin", label);
+            node.field("pinfunction", pin);
+            node.bare("pintype", format!("{kind}+no_connect"));
+            entry.push(node);
+            list.push(entry);
+        }
+    }
     list
 }

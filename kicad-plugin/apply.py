@@ -241,8 +241,8 @@ def _nets(board, components: dict[str, Component], outcome: Outcome) -> dict[str
     nets = {}
     for component in components.values():
         for name in component.pads.values():
-            if name in nets:
-                continue
+            if not name or name in nets:
+                continue  # a declared no-connect needs no net
             net = board.FindNet(name)
             if net is None:
                 net = pcbnew.NETINFO_ITEM(board, name)
@@ -479,7 +479,14 @@ def _anchor(fresh, on_board: dict[str, object], slots: dict[str, int], outcome: 
     about where it should stay. Moving one that already exists is the button's business, because
     there a person asked for it.
     """
-    for footprint, component in fresh:
+    by_ref = {component.ref: (footprint, component) for footprint, component in fresh}
+    order, cyclic = anchor.placement_order(
+        (name, component.anchor) for name, (_, component) in by_ref.items()
+    )
+    if cyclic:
+        outcome.problems.append("Cyclic anchor chain; left staged: " + ", ".join(cyclic))
+    for name in order:
+        footprint, component = by_ref[name]
         target = anchor.reference(component.anchor)
         if target is None:
             continue
@@ -515,6 +522,12 @@ def _wire(footprint, component: Component, nets: dict[str, object], outcome: Out
         if name is None:
             # A pad the design says nothing about (a mounting pad, a shield tab) keeps whatever it
             # has rather than being cleared.
+            continue
+        if not name:
+            # A declared no-connect is on nothing, whatever an earlier revision wired it to.
+            if pad.GetNetCode() != 0:
+                pad.SetNetCode(0)
+                outcome.rewired += 1
             continue
         net = nets.get(name)
         if net is not None and pad.GetNetname() != name:

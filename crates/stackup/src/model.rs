@@ -77,6 +77,9 @@ pub struct Model {
     pub name: String,
     pub instances: Vec<Instance>,
     pub nets: Vec<Net>,
+    /// Pins declared `nc`, in declaration order, each once. The netlist carries them so a board
+    /// can clear what an earlier revision wired there.
+    pub nc: Vec<Terminal>,
     /// `stock { packages imperial="0402" }`.
     pub imperial: Option<String>,
     pub report: Report,

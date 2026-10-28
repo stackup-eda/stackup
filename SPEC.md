@@ -232,7 +232,7 @@ type, in KiCad's vocabulary: `input`, `output`, `bidirectional`, `passive`, `pow
 | Flag / property | Meaning |
 |---|---|
 | `required` | the pin must be connected — by a `circuit`, a `connect`, or a child block |
-| `once` | the pin may be named by at most one link |
+| `once` | the pin may be used by at most one link, unless the design shares it (§6.5) |
 | `symbol=` | the symbol's name for the pin, where it differs |
 | `symbol-kind=` | the symbol's kind for the pin, where the part corrects it |
 
@@ -240,7 +240,8 @@ A pin's children:
 
 - **`also <port-pin>`** — another name the same pin can be. A pad that carries `PA11` out of
   reset and `PA9` behind a remap is `pin PA11 … { also PA9 }`; peripheral tables (§5.5) name
-  either, and both refer to the one pin. Naming both in one design is using the pin twice.
+  either, and both refer to the one pin. Naming both in one design is using the pin twice, whether
+  or not it is `once`, unless the design shares it (§6.5).
 - **`role <role> …`** — what the pin is for (`role reset active=low pull=internal`). The
   vocabulary is open; two roles are established:
   - `role reset active=<low|high> pull=<internal|none>`;
@@ -495,7 +496,7 @@ something the block needs; from inside, it is what the block's contents are join
 block passes its own port to its children — `place pull-up sda node=i2c.sda rail=rail` — and the
 children are powered from whatever the block's user joined `rail` to.
 
-### 6.5 Unconnected pins
+### 6.5 Unconnected and shared pins
 
 ```kdl
 nc mcu.PA5 mcu.PA12 mcu.PC14 note="spare — the oscillator pads, free because there is no crystal"
@@ -504,6 +505,30 @@ nc mcu.PA5 mcu.PA12 mcu.PC14 note="spare — the oscillator pads, free because t
 `nc` declares pins deliberately joined to nothing. On a board a dropped join and a spare pin are
 the same netlist entry, so the difference has to be stated to be checked: a pin declared `nc`
 that is joined to anything is a finding. A pin nothing declares is only unconnected.
+
+The KiCad netlist carries each declared no-connect as KiCad's own netlist does: a one-pad
+`unconnected-(REF-PIN-PadN)` net whose pin type ends `+no_connect`. A board sync clears that pad's
+net, so a pin cut loose since the last sync does not keep the net it was wired to. A pin nothing
+declares is absent from the netlist, and its pad keeps whatever net it has.
+
+```kdl
+share mcu.PA14 note="SWCLK for the first flash only; SCL (PB6) once the firmware runs"
+```
+
+`share` declares pins deliberately used by more than one link. A link **uses** a pin where it
+names one: an answer (`scl=PB6`) or a pin as a side (`from mcu.PA2`). A `once` pin used twice,
+or a pin used under two of its names (`swclk=PA14` and `scl=PB6`), is a finding (§12), because it
+is nearly always a mistake: two peripherals answered onto one pin. Where it is not — a pin that is
+SWD while a debugger flashes the chip and the sensor's clock once the firmware runs — `share`
+says so, under any of the pin's names. The `note` is required: the reason is what a reader checks.
+
+Sharing lifts only that rule. Every answer is still checked against the part's peripherals, and
+the shared net's facts — its pulls, its rest level, a strap's requirement on it — are checked over
+everything on it, as on any net. Whether the uses are compatible with each other — whether one
+link's traffic is harmless to the other's devices — is not yet checked; a `share` may later take a
+body that states how the uses divide.
+
+A `share` on a pin fewer than two links use is stale, and a pin both shared and `nc` is a finding.
 
 ### 6.6 Purchasing declarations and placement matching
 
@@ -695,7 +720,8 @@ motor driver carries the motor's current, and a sense connection to the same net
 
 A **net** is derived: the connected set of segments. Nothing declares a net.
 
-A **signal** is what a link's line carries. A net carries at most one signal; a signal may span
+A **signal** is what a link's line carries. A net carries at most one signal, unless it is on a
+shared pin (§6.5), which carries one for each link that uses it; a signal may span
 several nets — a PWM line through a series resistor is one signal on two nets — where the design
 says it crosses from one to the next (an open question; see `OPEN.md`).
 
@@ -1011,7 +1037,8 @@ every link on that part at once:
   `spi`'s — while the lines of a composed type (§8.3) each answer for themselves, so three
   `pwm` lines in one link may sit on three counters unless the type asserts otherwise;
 - the kind's relations hold (a `pwm-pair`'s `low` is the complement of its `high`);
-- each port pin is used once, and each peripheral line once per instance;
+- each port pin is used once, unless it is shared (§6.5), and each peripheral line once per
+  instance;
 - the type's requirements and assertions hold over the facts the chosen instances stamp.
 
 The instance is never named in the design. It is whatever the pins leave.
@@ -1034,7 +1061,9 @@ produces **findings**, all at once. A finding is one of:
 | duplicate `claim` | two ports `claim` one value of one fact within its aspect's scope |
 | unconnected pin | a `required` pin is joined to nothing |
 | connected `nc` | a pin declared `nc` is joined to something |
-| pin used twice | a `once` pin, or one pin under two `also` names, is named by two links |
+| pin used twice | a `once` pin, or one pin under two of its names, is used twice by links, and is not shared (§6.5) |
+| shared no-connect | a pin is declared both `share` and `nc` |
+| stale share | a shared pin is used by fewer than two links |
 | illegal answer | an answer admits no assignment of peripheral instances (§11.7) |
 | lines apart | the answered lines of one kind sit on no one instance (§11.7) |
 | unbound line received | a `connect` declares a line `nc` and a `to` side receives it (§11.5) |
@@ -1042,7 +1071,7 @@ produces **findings**, all at once. A finding is one of:
 | unmatched line | a line in a link has no counterpart on the other side |
 | cycle | facts depend on one another in a loop |
 
-Findings are errors; an incomplete link is a warning. A check that holds only for what is
+Findings are errors; an incomplete link and a stale share are warnings. A check that holds only for what is
 stated (§9.7), or cannot be run because its fact is unknown, is a **note**: reported, never a
 pass, never a failure. A failed assertion or requirement points at the statements whose values
 it read — the loads it summed, the supply that set the voltage — wherever they live.

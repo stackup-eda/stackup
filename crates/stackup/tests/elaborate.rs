@@ -460,6 +460,51 @@ design board {
 }
 
 #[test]
+fn declared_no_connects_export_as_kicad_unconnected_nets() {
+    let fx = Fixture::new(
+        "no-connect",
+        &[(
+            "board.kdl",
+            r#"
+part chip {
+    reference U
+    pin A bidirectional
+    pin B bidirectional
+    pin GND power_in
+    package qfn footprint="Test:QFN" {
+        pad A 1
+        pad B 2
+        pad GND 3
+        pad GND 4
+    }
+}
+design board {
+    place chip u
+    place chip v
+    circuit u.A v.A name="link"
+    nc u.B v.B note="spare"
+    nc u.B
+}
+"#,
+        )],
+    );
+    let (lib, loaded) = Library::load(&fx.dir.join("board.kdl"), &Prefixes::default());
+    assert!(loaded.is_empty(), "{}", loaded.render());
+    let (file, design) = lib.designs()[0];
+    let model = elaborate(&lib, file, design);
+    assert!(model.report.is_empty(), "{}", model.report.render());
+    assert_eq!(model.nc.len(), 2, "each declared pin once");
+    let (netlist, report) = netlist::kicad(&lib, &model);
+    assert!(report.is_empty(), "{}", report.render());
+    assert!(netlist.contains("(name \"unconnected-(U1-B-Pad2)\")"), "{netlist}");
+    assert!(netlist.contains("(name \"unconnected-(U2-B-Pad2)\")"), "{netlist}");
+    assert!(netlist.contains("(pintype bidirectional+no_connect)"), "{netlist}");
+    assert_eq!(netlist.matches("+no_connect").count(), 2, "{netlist}");
+    // A pin nothing declares is only unconnected, and stays out of the netlist.
+    assert!(!netlist.contains("-GND-"), "{netlist}");
+}
+
+#[test]
 fn a_block_anchor_parameter_resolves_in_its_callers_scope() {
     let fx = Fixture::new(
         "anchor-parameter",
@@ -2316,5 +2361,146 @@ design demo { place wrapper a ref-R="R1"; place wrapper b ref-R="R1" }
             .report
             .render()
             .contains("`R1` is printed on two parts")
+    );
+}
+
+#[test]
+fn a_pin_used_twice_is_a_finding_unless_shared() {
+    // PA14 is SWCLK out of reset and SCL (as PB6) once firmware runs: one pin, two links.
+    let part = r#"
+part mcu {
+    symbol "Lib:MCU"
+    reference U
+    pin PA0 bidirectional once
+    pin PA1 bidirectional once
+    pin PA13 bidirectional once
+    pin PA14 bidirectional once { also PB6 }
+    pin PB7 bidirectional once
+    pin NRST bidirectional once
+    package p footprint="SO8" { pad PA0 1; pad PA1 2; pad PA13 3; pad PA14 4; pad PB7 5; pad NRST 6 }
+    peripheral SWD swd {
+        swdio PA13
+        swclk PA14
+        nrst NRST
+    }
+    peripheral I2C1 i2c {
+        sda PB7
+        scl PB6
+    }
+    peripheral GPIO gpio {
+        io PA0 PA1 PA13 PA14 PB6 PB7
+    }
+}
+
+part probe {
+    symbol "Lib:PROBE"
+    reference J
+    pin SWDIO passive
+    pin SWCLK passive
+    pin RESET passive
+    package p footprint="TC2030" { pad SWDIO 1; pad SWCLK 2; pad RESET 3 }
+    port swd type=swd {
+        line swdio pin=SWDIO
+        line swclk pin=SWCLK
+        line nrst pin=RESET
+    }
+}
+
+part sensor {
+    symbol "Lib:SENSOR"
+    reference U
+    pin SDA bidirectional
+    pin SCL input
+    pin EN input
+    package p footprint="LGA" { pad SDA 1; pad SCL 2; pad EN 3 }
+    port i2c type=i2c {
+        line sda pin=SDA
+        line scl pin=SCL
+    }
+    port en pin=EN
+}
+"#;
+    let design = |extra: &str| {
+        format!(
+            r#"{part}
+design demo {{
+    place mcu mcu
+    place probe debug
+    place sensor s
+    connect swd {{
+        from mcu swdio=PA13 swclk=PA14 nrst=NRST
+        to debug
+    }}
+    connect i2c {{
+        from mcu sda=PB7 scl=PB6
+        to s
+    }}
+    connect output {{
+        from mcu.PA0
+        to s.en
+    }}
+    {extra}
+}}
+"#
+        )
+    };
+    let messages = |name: &str, extra: &str| -> (Vec<String>, Vec<String>) {
+        let fx = Fixture::new(name, &[("board.kdl", &design(extra))]);
+        let model = fx.model("board.kdl", "demo");
+        let mut errors = Vec::new();
+        let mut warnings = Vec::new();
+        for f in &model.report.findings {
+            let m = f.diagnostic.message.clone();
+            if f.diagnostic.severity == stackup_kdl::diag::Severity::Error {
+                errors.push(m);
+            } else {
+                warnings.push(m);
+            }
+        }
+        (errors, warnings)
+    };
+
+    // Unshared: SWCLK and SCL on one pin, under two of its names.
+    let (errors, _) = messages("pin-twice", "");
+    assert!(
+        errors.iter().any(|m| m.contains("`mcu.PA14` is used 2 times (`swclk=PA14`, `scl=PB6`), under 2 of its names")
+            && m.contains("share mcu.PA14 note=")),
+        "{errors:#?}"
+    );
+    assert_eq!(errors.len(), 1, "{errors:#?}");
+
+    // Shared, by either of its names: no finding, and the I²C answer is still checked.
+    for name in ["PA14", "PB6"] {
+        let (errors, warnings) = messages(
+            &format!("pin-shared-{name}"),
+            &format!(r#"share mcu.{name} note="SWD for the first flash; SCL once firmware runs""#),
+        );
+        assert!(errors.is_empty() && warnings.is_empty(), "{errors:#?} {warnings:#?}");
+    }
+
+    // A `once` pin named twice under one name: a second output from PA0.
+    let (errors, _) = messages(
+        "once-twice",
+        "connect output {\n        from mcu.PA0\n        to s.SCL\n    }",
+    );
+    assert!(
+        errors.iter().any(|m| m.contains("`mcu.PA0` is used 2 times (`mcu.PA0`, `mcu.PA0`), and it is a `once` pin")),
+        "{errors:#?}"
+    );
+
+    // A stale share warns; a shared no-connect is an error.
+    let (errors, warnings) = messages(
+        "share-stale",
+        r#"share mcu.PA1 note="nothing uses it"
+    nc mcu.PA1
+    share mcu.PA14 note="SWD for the first flash; SCL once firmware runs""#,
+    );
+    assert!(
+        warnings.iter().any(|m| m.contains("`mcu.PA1` is shared, but no link uses it")),
+        "{warnings:#?}"
+    );
+    assert!(
+        errors.iter().any(|m| m.contains("`mcu.PA1` is declared both shared and no-connect")),
+        "{errors:#?}"
     );
 }
