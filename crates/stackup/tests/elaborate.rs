@@ -53,6 +53,50 @@ design demo {
 }
 
 #[test]
+fn netlist_marks_only_hand_placements() {
+    let fx = Fixture::new(
+        "hand-netlist",
+        &[(
+            "board.kdl",
+            r#"
+part capacitor {
+    symbol "Device:C"
+    reference C
+    order mpn="ABC"
+    pin A passive
+    pin B passive
+    package chip footprint="Capacitor_SMD:C_0402_1005Metric" { pad A 1; pad B 2 }
+}
+
+design demo {
+    place capacitor C1
+    place capacitor C2 hand=#false
+    place capacitor C3 hand=#true
+}
+"#,
+        )],
+    );
+    let (lib, loaded) = Library::load(&fx.dir.join("board.kdl"), &Prefixes::default());
+    assert!(loaded.is_empty(), "{}", loaded.render());
+    let (file, design) = lib.designs()[0];
+    let model = elaborate(&lib, file, design);
+    assert!(model.report.is_empty(), "{}", model.report.render());
+    let (netlist, report) = netlist::kicad(&lib, &model);
+    assert!(report.is_empty(), "{}", report.render());
+    let hand = "(name \"Stackup Hand\")\n\t\t\t\t(value \"yes\")";
+    let comp = |r: &str| {
+        netlist
+            .split("(comp")
+            .find(|c| c.contains(&format!("(ref \"{r}\")")))
+            .unwrap_or_else(|| panic!("no {r} in {netlist}"))
+            .to_string()
+    };
+    assert!(comp("C3").contains(hand), "{netlist}");
+    assert!(!comp("C1").contains("Stackup Hand"), "{netlist}");
+    assert!(!comp("C2").contains("Stackup Hand"), "{netlist}");
+}
+
+#[test]
 fn board_matches_library_children_to_validated_mpns() {
     let fx = Fixture::new(
         "matched-mpns",

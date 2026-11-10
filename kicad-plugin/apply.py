@@ -413,7 +413,58 @@ def _refresh(footprint, component: Component, hints) -> bool:
     # added by hand to a part the design has no opinion about. A bundled land always says, since
     # it is stackup's and a body it dropped has to leave the board too.
     changed |= _set_models(footprint, component.models)
+    changed |= _set_hand(footprint, component.hand)
     return changed
+
+
+#: The attributes that keep a hand-installed part out of everything KiCad hands an assembler, by the
+#: name a `.kicad_pcb` gives each in `(attr …)`.
+HAND_ATTRIBUTES = {
+    "exclude_from_pos_files": pcbnew.FP_EXCLUDE_FROM_POS_FILES,
+    "exclude_from_bom": pcbnew.FP_EXCLUDE_FROM_BOM,
+}
+#: Hidden footprint field naming the `HAND_ATTRIBUTES` the sync set, as against those the land had.
+HAND_FIELD = "Stackup Hand Excluded"
+
+
+def _set_hand(footprint, hand: bool) -> bool:
+    """Keeps a hand-installed part out of the assembler's files. Returns whether anything changed.
+
+    `hand=#true` already makes the part DNP in `stackup bom`, which is the purchasing BOM. This is
+    the same fact for the files KiCad and fab plugins build from footprints: *Exclude from position
+    files* keeps it out of the pick-and-place file, and *Exclude from BOM* out of KiCad's own BOM —
+    the assembly BOM a fab's export plugin uploads, which would otherwise ask the assembler to
+    source and fit connectors and modules. Purchasing never reads KiCad's BOM, so nothing is lost.
+
+    Not *Do not populate*: the part is fitted, just not by the assembler, and `kicad-cli pcb render`
+    leaves DNP parts out of board renders with no option to draw them.
+
+    The sync takes back only what it set. Lands carry these attributes themselves — every stock
+    `MountingHole` and `TestPoint` has `(attr exclude_from_pos_files exclude_from_bom)`, a
+    `Fiducial` `exclude_from_bom` — and `hand=#false` says nothing about those, so clearing
+    whatever is there would put test points in the pick-and-place file and on the assembly BOM.
+    `HAND_FIELD` names each attribute the sync added; a part that stops being hand-installed loses
+    exactly those. A swapped-in body starts with no field and its own land's attributes.
+    """
+    attributes = footprint.GetAttributes()
+    text = footprint.GetFieldText(HAND_FIELD) if footprint.HasField(HAND_FIELD) else ""
+    ours = set(text.split())
+    if hand:
+        added = {name for name, bit in HAND_ATTRIBUTES.items() if not attributes & bit}
+        if not added:
+            return False
+        for name in added:
+            attributes |= HAND_ATTRIBUTES[name]
+        footprint.SetAttributes(attributes)
+        _set_field(footprint, HAND_FIELD, " ".join(sorted(ours | added)))
+        return True
+    if not ours:
+        return False
+    for name in ours:
+        attributes &= ~HAND_ATTRIBUTES.get(name, 0)
+    footprint.SetAttributes(attributes)
+    _set_field(footprint, HAND_FIELD, "")
+    return True
 
 
 def _set_models(footprint, spec: str) -> bool:

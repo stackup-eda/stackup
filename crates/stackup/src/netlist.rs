@@ -175,6 +175,12 @@ fn components(lib: &Library, model: &Model, report: &mut Report) -> List {
             let spec = models(lib, decl.file, pkg, &mut shipped, report);
             comp.push(property("Stackup Models", &spec));
         }
+        // Hand-installed parts are DNP for the assembler (see `bom`), so the plugin keeps them out
+        // of the pick-and-place file and KiCad's assembly BOM. Only stated when true; its absence
+        // means machine-placed.
+        if inst.hand {
+            comp.push(property("Stackup Hand", "yes"));
+        }
         if let Some(anchor) = &inst.anchor {
             comp.push(property("Stackup Anchor", anchor));
             if let Some(spot) = &inst.spot {
