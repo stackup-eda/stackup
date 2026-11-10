@@ -869,3 +869,37 @@ design demo {
             .is_empty()
     );
 }
+
+#[test]
+fn package_models_round_trip() {
+    let source = r#"part module {
+    pin A passive
+    package lga footprint="RF_Module:Land" {
+        model "shapes/Body.step" offset="-7.7 -10.25 0"
+        model kicad="RF_Module.3dshapes/Shield.step" rotate="0 0 90"
+        pad A 1
+    }
+}
+"#;
+    let file = read(source);
+    let part = file.parts().next().unwrap();
+    let models: Vec<_> = part.packages().next().unwrap().models().collect();
+    assert_eq!(
+        models[0].source,
+        stackup_eda_parser::ast::ModelSource::File("shapes/Body.step".into())
+    );
+    assert_eq!(models[0].offset, [-7.7, -10.25, 0.0]);
+    assert_eq!(models[1].rotate, [0.0, 0.0, 90.0]);
+    assert_eq!(emit(&file), source);
+}
+
+#[test]
+fn a_model_names_one_body_with_three_numbers() {
+    let part = |model: &str| {
+        format!("part p {{\n    pin A passive\n    package x footprint=\"L:F\" {{\n        {model}\n        pad A 1\n    }}\n}}\n")
+    };
+    one_error(&part("model"), "`model` needs a file");
+    one_error(&part(r#"model "a.step" kicad="b.step""#), "not both");
+    one_error(&part(r#"model "a.step" offset="1 2""#), "three numbers");
+    one_error(&part(r#"model "a.step" scale="2 2 2""#), "no `scale=` property");
+}

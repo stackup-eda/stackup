@@ -528,6 +528,7 @@ impl Cx {
                     items.extend(self.meta(c).map(PackageItem::Meta));
                 }
                 "order" => items.extend(self.order(c).map(PackageItem::Order)),
+                "model" => items.extend(self.model(c).map(PackageItem::Model)),
                 "pad" => {
                     let pin = self.text_arg(c, 0, "pin");
                     let label = match args(c).nth(1) {
@@ -570,6 +571,68 @@ impl Cx {
             items,
             span: span(n),
         })
+    }
+
+    /// `model "<file>" …` or `model kicad="<path>" …`, with `offset=` and `rotate=` as three
+    /// numbers in a string.
+    fn model(&mut self, n: &KdlNode) -> Option<Model3d> {
+        let file = self.opt_text_arg(n, 0, "file");
+        self.no_more_args(n, 1);
+        let mut props = self.known_properties(n, &["kicad", "offset", "rotate"]);
+        let kicad = self.take_text(&mut props, "kicad");
+        let offset = self.triple(n, &mut props, "offset");
+        let rotate = self.triple(n, &mut props, "rotate");
+        self.no_children(n);
+        let source = match (file, kicad) {
+            (Some(f), None) => ModelSource::File(f),
+            (None, Some(k)) => ModelSource::Kicad(k),
+            (Some(_), Some(_)) => {
+                self.error(
+                    span(n),
+                    "`model` names a file or `kicad=` a stock one, not both",
+                );
+                return None;
+            }
+            (None, None) => {
+                self.error(
+                    span(n),
+                    "`model` needs a file, relative to this one, or `kicad=` a stock one",
+                );
+                return None;
+            }
+        };
+        Some(Model3d {
+            source,
+            offset: offset?,
+            rotate: rotate?,
+            span: span(n),
+        })
+    }
+
+    /// `key="x y z"`: three numbers. Absent is zero; malformed is reported and `None`.
+    fn triple(&mut self, n: &KdlNode, props: &mut Vec<Property>, key: &str) -> Option<[f64; 3]> {
+        let Some(i) = props.iter().position(|p| p.key == key) else {
+            return Some([0.0; 3]);
+        };
+        let p = props.remove(i);
+        let parsed = match &p.value {
+            Value::String(s) => {
+                let v: Vec<f64> = s
+                    .split_whitespace()
+                    .map(str::parse)
+                    .collect::<Result<_, _>>()
+                    .unwrap_or_default();
+                <[f64; 3]>::try_from(v).ok()
+            }
+            _ => None,
+        };
+        if parsed.is_none() {
+            self.error(
+                p.span,
+                format!("`{}` takes `{key}=\"x y z\"`: three numbers", name(n)),
+            );
+        }
+        parsed
     }
 
     fn port(&mut self, n: &KdlNode) -> Option<Port> {

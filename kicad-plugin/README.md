@@ -39,13 +39,15 @@ To sync a closed board without opening KiCad, use KiCad's bundled Python:
 
 The headless command refuses to write a board open in KiCad. The action plugin works on the editor's open board instead; save the board afterward.
 
+Every sync checks each footprint's 3D bodies. A body a package declares with `model` is copied into the board's `stackup.3dshapes/` and drawn from there. A body a land names that is not on the machine is looked for by file name in the board's `stackup.3dshapes/`, then in each library's; a library's copy is copied in, and the footprint is pointed at it in the place the land gave it. A footprint whose body is found nowhere is listed in the sync report. The board carries its own copies, so it opens with its bodies on a machine without the libraries.
+
 Anchor chains are placed with hosts before their dependents, both during sync
 of new footprints and with **Place at anchor pad**. For example, an inductor
 anchored to a regulator moves before a capacitor anchored to that inductor.
 Hosts outside the selection retain their current positions. Cyclic anchor
 chains and components depending on them stay in place and are reported.
 
-Run the anchor ordering regression tests with KiCad's bundled Python:
+Run the plugin's regression tests with KiCad's bundled Python:
 
 ```sh
 python3 -m unittest discover -s kicad-plugin/tests

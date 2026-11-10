@@ -234,6 +234,22 @@ impl W {
                         };
                         w.line(&format!("pad {} {label}", ident(&pad.pin)));
                     }
+                    PackageItem::Model(m) => {
+                        let mut head = match &m.source {
+                            ModelSource::File(f) => format!("model {}", quote(f)),
+                            ModelSource::Kicad(k) => format!("model kicad={}", quote(k)),
+                        };
+                        for (key, v) in [("offset", m.offset), ("rotate", m.rotate)] {
+                            if v != [0.0; 3] {
+                                let _ = write!(
+                                    head,
+                                    " {key}={}",
+                                    quote(&format!("{} {} {}", v[0], v[1], v[2]))
+                                );
+                            }
+                        }
+                        w.line(&head);
+                    }
                 }
             }
         });

@@ -271,6 +271,7 @@ package <name> footprint="<footprint>" {
     symbol "<lib>:<name>"          // what this body changes, if anything
     description "<text>"
     order mpn=…
+    model "<file>" offset="x y z" rotate="x y z"
     pad <pin> <label>
     …
 }
@@ -291,6 +292,16 @@ A package may carry the part's metadata statements — `symbol`, `value`, `datas
 `description` — and its `order`, for what is true of the part in that body and not in another.
 The package's statement is read first and the part's answers for whatever it leaves unsaid;
 `reference` and `manufacturer` cannot appear in a package, because a body changes neither.
+
+A package may name the 3D body its land is drawn with, where the land's own `(model …)` is not
+the right one or names a file KiCad never shipped. `model "<file>"` is a file relative to the
+declaring `.kdl` file; it travels with the board, which the sync copies it into as
+`stackup.3dshapes/<file name>`. `model kicad="<Lib>.3dshapes/<file>"` is a stock body under the
+KiCad install's 3D library. `offset=` (millimetres) and `rotate=` (degrees) are three numbers in
+KiCad's 3D frame, zero when left out; a package may name several bodies. A named file that does
+not exist is an error when the file is loaded, whether or not a design places the part, and two
+different files that would share a name on the board are an error in the netlist. A package that
+names no body leaves the land's own.
 
 Inside the part, `package` reads as a parameter holding the chosen package's name, so a child
 block can be conditional on the body (`when "package == lqfp48"`, §7).

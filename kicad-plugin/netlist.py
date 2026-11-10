@@ -12,6 +12,7 @@ do.
 
 from __future__ import annotations
 
+from pathlib import Path
 from dataclasses import dataclass, field
 
 
@@ -189,6 +190,9 @@ class Model3D:
     file: str
     offset: tuple[float, float, float] = (0.0, 0.0, 0.0)
     rotate: tuple[float, float, float] = (0.0, 0.0, 0.0)
+    #: For a `project` body, the absolute path of the file the design names, which the sync
+    #: copies to `file` under the board's directory. Empty for a stock body.
+    source: str = ""
 
     def path(self, kicad_var: str) -> str:
         """The path a `.kicad_pcb` spells this as. `kicad_var` is the `KICAD<N>_3DMODEL_DIR` of
@@ -204,8 +208,9 @@ NO_MODELS = "none"
 
 
 def parse_models(text: str) -> list[Model3D]:
-    """Reads `Component.models`. Empty text is no bodies, which means *leave the land's own*;
-    `NO_MODELS` is also no bodies, and means *strip them* — `apply` tells the two apart."""
+    """Reads `Component.models`: `;`-separated `where:file|ox oy oz|rx ry rz[|source]`. Empty text
+    is no bodies, which means *leave the land's own*; `NO_MODELS` is also no bodies, and means
+    *strip them* — `apply` tells the two apart."""
     out: list[Model3D] = []
     if text == NO_MODELS:
         return out
@@ -214,13 +219,27 @@ def parse_models(text: str) -> list[Model3D]:
         where, _, file = spec.partition(":")
         if where not in ("kicad", "project") or not file:
             raise ValueError(f"not a 3D body spec: {entry!r}")
-        offset, _, rotate = rest.partition("|")
+        offset, _, rest = rest.partition("|")
+        rotate, _, source = rest.partition("|")
         triple = lambda s: tuple(float(v) for v in s.split()) if s.strip() else (0.0, 0.0, 0.0)
         ox, rx = triple(offset), triple(rotate)
         if len(ox) != 3 or len(rx) != 3:
             raise ValueError(f"not a 3D body spec: {entry!r}")
-        out.append(Model3D(where, file, ox, rx))
+        out.append(Model3D(where, file, ox, rx, source))
     return out
+
+
+def shape_dirs(text: str) -> list[Path]:
+    """The libraries' `stackup.3dshapes/` directories, from `(design (shapes …))`: where the sync
+    looks for a body the board names and the machine does not have."""
+    tree = _sexpr(text)
+    if not tree or tree[0] != "export":
+        raise ValueError("not a KiCad netlist: expected a leading (export …)")
+    return [
+        Path(child[1])
+        for child in _children(_section(tree, "design"), "shapes")
+        if len(child) > 1 and isinstance(child[1], str)
+    ]
 
 
 def classes(text: str) -> dict[str, NetClass]:

@@ -111,6 +111,34 @@ def _expand(uri: str, project_dir: Path | None) -> str:
     return re.sub(r"\$\{([^}]+)\}", replace, uri)
 
 
+def model_file(filename: str, project_dir: Path | None) -> Path | None:
+    """The file a footprint's `(model …)` names, if it is there. KiCad's 3D resolver expands the
+    same variables as a library table, and a `*_3DMODEL_DIR` falls back to an installed KiCad's
+    `3dmodels/` the way a footprint directory does."""
+    def replace(match: re.Match) -> str:
+        var = match.group(1)
+        if var == "KIPRJMOD" and project_dir:
+            return str(project_dir)
+        if var in os.environ:
+            return os.environ[var]
+        if var.endswith("3DMODEL_DIR"):
+            for candidate in _INSTALLED_3DMODEL_DIRS:
+                if candidate.is_dir():
+                    return str(candidate)
+        return match.group(0)
+
+    path = Path(re.sub(r"\$\{([^}]+)\}", replace, filename))
+    if not path.is_absolute() and project_dir:
+        path = project_dir / path
+    return path if path.is_file() else None
+
+
+_INSTALLED_3DMODEL_DIRS = [
+    Path("/Applications/KiCad/KiCad.app/Contents/SharedSupport/3dmodels"),
+    Path("/usr/share/kicad/3dmodels"),
+    Path("/usr/local/share/kicad/3dmodels"),
+]
+
 _INSTALLED_FOOTPRINT_DIRS = [
     Path("/Applications/KiCad/KiCad.app/Contents/SharedSupport/footprints"),
     Path("/usr/share/kicad/footprints"),

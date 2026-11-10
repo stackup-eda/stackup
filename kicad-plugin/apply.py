@@ -35,6 +35,8 @@ the only thing that knows, and placement is the only place the knowledge fits. S
 
 from __future__ import annotations
 
+import filecmp
+import shutil
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -88,6 +90,15 @@ class Outcome:
     #: What happened to the net classes — the rules, as against the parts and the nets. See
     #: `netclass.py`.
     classed: netclass.Classed = field(default_factory=netclass.Classed)
+    #: 3D bodies copied into the board's `stackup.3dshapes/`, because the design names them and
+    #: the board directory did not have them, or had an older copy.
+    shipped: list[str] = field(default_factory=list)
+    #: Footprints whose body did not resolve and were pointed at a same-named file in the board's
+    #: `stackup.3dshapes/`, copied there from a library's when the board did not have it.
+    found_bodies: list[str] = field(default_factory=list)
+    #: Footprints that name a body no file answers to. They open in the 3D viewer as bare pads, so
+    #: each one is either a `model` the design should declare or a file to add.
+    bodiless: list[str] = field(default_factory=list)
     problems: list[str] = field(default_factory=list)
 
     def summary(self) -> str:
@@ -124,15 +135,31 @@ class Outcome:
         if self.classed.changed():
             lines.append("")
             lines.extend(self.classed.summary())
+        if self.shipped:
+            lines.append("\nCopied to stackup.3dshapes/: " + ", ".join(sorted(self.shipped)))
+        if self.found_bodies:
+            lines.append(
+                "3D body found in stackup.3dshapes/: " + ", ".join(sorted(self.found_bodies))
+            )
+        if self.bodiless:
+            lines.append(
+                "\nNo 3D body (the model file is missing; declare a `model` on the package):\n  "
+                + "\n  ".join(sorted(self.bodiless))
+            )
         if self.problems:
             lines.append("\nProblems:\n  " + "\n  ".join(self.problems))
         return "\n".join(lines)
 
 
 def apply(
-    board, components: dict[str, Component], classes: dict[str, NetClass] | None = None
+    board,
+    components: dict[str, Component],
+    classes: dict[str, NetClass] | None = None,
+    shape_dirs: list[Path] | None = None,
 ) -> Outcome:
-    """Brings `board` in line with `components`, and its rules in line with `classes`."""
+    """Brings `board` in line with `components`, and its rules in line with `classes`.
+    `shape_dirs` are the libraries' `stackup.3dshapes/`, searched for a body the board names
+    that is not on this machine."""
     outcome = Outcome()
     project_dir = Path(board.GetFileName()).parent if board.GetFileName() else None
 
@@ -142,6 +169,7 @@ def apply(
     # nets they are no longer on. A swapped-in body's pads are on nothing until `_wire`, and
     # nothing is exactly what the rename detection ignores.
     _prune(board, components, outcome)
+    _ship(components, project_dir, outcome)
     existing = _by_uuid(board)
     swapped = _rebody(board, components, existing, project_dir, outcome)
     nets = _nets(board, components, outcome)
@@ -180,6 +208,7 @@ def apply(
 
     _anchor(fresh, on_board, anchor.slots(_anchors(components)), outcome)
     _retire(board, was, nets, outcome)
+    _check_bodies(board, project_dir, shape_dirs or [], outcome)
     # Last, once the nets are what the design says they are: a class is assigned by net name, so
     # a net renamed above is assigned under its new name and a retired one is not assigned at all.
     outcome.classed = netclass.apply(board, classes or {}, set(nets))
@@ -420,6 +449,89 @@ def _set_models(footprint, spec: str) -> bool:
         model.m_Show = True
         models.push_back(model)
     return True
+
+
+def _ship(components: dict[str, Component], project_dir: Path | None, outcome: Outcome) -> None:
+    """Copies each body the design names into the board's directory, where `${KIPRJMOD}` finds it.
+
+    The board carries its own copy rather than pointing into a library checkout, so it opens the
+    same on a machine with no checkout, or with the library at another revision. An existing copy
+    is replaced only when it differs, so an unchanged sync leaves the directory alone."""
+    if project_dir is None:
+        return
+    done: set[str] = set()
+    for component in components.values():
+        try:
+            wanted = netlist.parse_models(component.models)
+        except ValueError as error:
+            outcome.problems.append(f"{component.ref} ({component.path}): {error}")
+            continue
+        for m in wanted:
+            if m.where != "project" or not m.source or m.file in done:
+                continue
+            done.add(m.file)
+            source, target = Path(m.source), project_dir / m.file
+            if not source.is_file():
+                outcome.problems.append(f"{component.ref}: no 3D model at {source}")
+                continue
+            if target.is_file() and filecmp.cmp(source, target, shallow=False):
+                continue
+            target.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copyfile(source, target)
+            outcome.shipped.append(target.name)
+
+
+def _check_bodies(board, project_dir: Path | None, shape_dirs: list[Path], outcome: Outcome) -> None:
+    """Finds every footprint whose body is not there, and repairs what it can.
+
+    A land names its body by file. A stock land names the body KiCad meant to ship with it, and
+    for a few KiCad never did; a bundled land names one under the board's `stackup.3dshapes/`,
+    which a new board does not have yet. Each missing file is looked for by name in the board's
+    `stackup.3dshapes/`, then in each library's, and a library's copy is copied in beside the
+    board; the footprint is pointed at it in the place the land gave it. What is found nowhere is
+    listed, so a board never opens without a body nobody was told about. A footprint naming no
+    body at all — a fiducial, a test pad — is drawn as intended and is not listed."""
+    if project_dir is None:
+        return
+    shapes = project_dir / "stackup.3dshapes"
+    for footprint in board.GetFootprints():
+        # Copies, so clearing the footprint's list below cannot pull them out from under us.
+        models = [_copy_model(m) for m in footprint.Models()]
+        missing = [m for m in models if not fplib.model_file(m.m_Filename, project_dir)]
+        if not missing:
+            continue
+        ref = footprint.GetReference()
+        repaired = False
+        for m in missing:
+            name = Path(m.m_Filename.replace("\\", "/")).name
+            local = shapes / name
+            if not local.is_file():
+                found = next((d / name for d in shape_dirs if (d / name).is_file()), None)
+                if found is None:
+                    outcome.bodiless.append(f"{ref}: {m.m_Filename}")
+                    continue
+                shapes.mkdir(exist_ok=True)
+                shutil.copyfile(found, local)
+                outcome.shipped.append(name)
+            m.m_Filename = "${KIPRJMOD}/stackup.3dshapes/" + name
+            repaired = True
+        if repaired:
+            footprint.Models().clear()
+            for m in models:
+                footprint.Models().push_back(m)
+            outcome.found_bodies.append(ref)
+
+
+def _copy_model(m):
+    """A detached copy of a footprint's body; the binding has no copy constructor."""
+    out = pcbnew.FP_3DMODEL()
+    out.m_Filename = m.m_Filename
+    out.m_Offset = pcbnew.VECTOR3D(*_xyz(m.m_Offset))
+    out.m_Rotation = pcbnew.VECTOR3D(*_xyz(m.m_Rotation))
+    out.m_Scale = pcbnew.VECTOR3D(*_xyz(m.m_Scale))
+    out.m_Opacity = m.m_Opacity
+    out.m_Show = m.m_Show
+    return out
 
 
 def _xyz(v) -> tuple[float, float, float]:

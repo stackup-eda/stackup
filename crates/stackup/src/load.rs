@@ -15,7 +15,7 @@ use std::{
 
 use stackup_kdl::{
     Diagnostic, Document, Source, Span,
-    ast::{self, Block, BlockKind, Item, Mpn, Part, TypeDecl},
+    ast::{self, Block, BlockKind, Item, ModelSource, Mpn, Part, TypeDecl},
 };
 
 use crate::{
@@ -202,6 +202,24 @@ impl Library {
             }
             lib.files[id].scope = scope;
         }
+        // A body a package names has to be there, or the board it reaches opens without it.
+        for f in &lib.files {
+            for item in &f.file.items {
+                let Item::Part(part) = item else { continue };
+                for model in part.packages().flat_map(|p| p.models()) {
+                    if let ModelSource::File(name) = &model.source {
+                        let path = model_path(&f.path, name);
+                        if !path.is_file() {
+                            report.error(
+                                &f.source,
+                                model.span,
+                                format!("no 3D model at {}", path.display()),
+                            );
+                        }
+                    }
+                }
+            }
+        }
         (lib, report)
     }
 
@@ -314,4 +332,9 @@ impl Library {
 
 fn canonical(path: &Path) -> PathBuf {
     path.canonicalize().unwrap_or_else(|_| path.to_path_buf())
+}
+
+/// Where `model "<name>"` in the file at `declared_in` points: beside that file.
+pub fn model_path(declared_in: &Path, name: &str) -> PathBuf {
+    declared_in.parent().unwrap_or(Path::new(".")).join(name)
 }

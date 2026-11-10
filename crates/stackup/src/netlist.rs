@@ -5,12 +5,12 @@
 //! it already placed; and the absence of a date, because a generated artifact that changes every
 //! second is not diffable.
 
-use std::collections::HashMap;
+use std::{collections::HashMap, path::PathBuf};
 
-use stackup_kdl::ast::MetaKey;
+use stackup_kdl::ast::{MetaKey, ModelSource, Package};
 
 use crate::{
-    load::{Decl, Library},
+    load::{Decl, FileId, Library, model_path},
     model::{Kind, Model, Terminal},
     report::Report,
     sexpr::List,
@@ -29,6 +29,16 @@ pub fn kicad(lib: &Library, model: &Model) -> (String, Report) {
     let mut design = List::named("design");
     design.field("source", format!("stackup:{}", model.name));
     design.field("tool", concat!("stackup ", env!("CARGO_PKG_VERSION")));
+    // Each library's bundled 3D bodies. A land names its body by file, and where that file is
+    // not on the machine — a stock land KiCad shipped no body for, a bundled land whose body the
+    // board directory does not have yet — the sync looks for the same name here.
+    for root in lib.prefixes.roots.values() {
+        let dir = root.dir.join("stackup.3dshapes");
+        if dir.is_dir() {
+            let dir = dir.canonicalize().unwrap_or(dir);
+            design.field("shapes", dir.display().to_string());
+        }
+    }
     root.push(design);
 
     root.push(components(lib, model, &mut report));
@@ -38,6 +48,9 @@ pub fn kicad(lib: &Library, model: &Model) -> (String, Report) {
 
 fn components(lib: &Library, model: &Model, report: &mut Report) -> List {
     let mut list = List::named("components");
+    // Each body that travels with the board, by the name it takes in the board's
+    // `stackup.3dshapes/`: two different files cannot both have it.
+    let mut shipped: HashMap<String, PathBuf> = HashMap::new();
     for (_, inst) in model.parts() {
         let Kind::Part { decl, package } = inst.kind else {
             continue;
@@ -156,6 +169,12 @@ fn components(lib: &Library, model: &Model, report: &mut Report) -> List {
         if let Some(intent) = &inst.intent {
             comp.push(property("Stackup Intent", intent));
         }
+        if let Some(pkg) = pkg
+            && pkg.models().next().is_some()
+        {
+            let spec = models(lib, decl.file, pkg, &mut shipped, report);
+            comp.push(property("Stackup Models", &spec));
+        }
         if let Some(anchor) = &inst.anchor {
             comp.push(property("Stackup Anchor", anchor));
             if let Some(spot) = &inst.spot {
@@ -171,6 +190,53 @@ fn components(lib: &Library, model: &Model, report: &mut Report) -> List {
         list.push(comp);
     }
     list
+}
+
+/// A package's bodies as the plugin reads them: `;`-separated entries of
+/// `where:file|ox oy oz|rx ry rz`, where `where` is `kicad` (under the install's 3D library) or
+/// `project` (under the board's directory). A project entry adds `|<source>`, the absolute path of
+/// the file the sync copies into the board's `stackup.3dshapes/`.
+fn models(
+    lib: &Library,
+    file: FileId,
+    pkg: &Package,
+    shipped: &mut HashMap<String, PathBuf>,
+    report: &mut Report,
+) -> String {
+    let triple = |v: [f64; 3]| format!("{} {} {}", v[0], v[1], v[2]);
+    let mut entries = Vec::new();
+    for m in pkg.models() {
+        let place = format!("{}|{}", triple(m.offset), triple(m.rotate));
+        match &m.source {
+            ModelSource::Kicad(path) => entries.push(format!("kicad:{path}|{place}")),
+            ModelSource::File(name) => {
+                let source = model_path(&lib.files[file].path, name);
+                let source = source.canonicalize().unwrap_or(source);
+                let Some(base) = source.file_name().map(|b| b.to_string_lossy().into_owned())
+                else {
+                    continue;
+                };
+                match shipped.get(&base) {
+                    Some(other) if *other != source => report.error(
+                        lib.source(file),
+                        m.span,
+                        format!(
+                            "`{base}` is also {}, and both would be stackup.3dshapes/{base} on the board",
+                            other.display()
+                        ),
+                    ),
+                    _ => {
+                        shipped.insert(base.clone(), source.clone());
+                    }
+                }
+                entries.push(format!(
+                    "project:stackup.3dshapes/{base}|{place}|{}",
+                    source.display()
+                ));
+            }
+        }
+    }
+    entries.join(";")
 }
 
 fn property(name: &str, value: &str) -> List {

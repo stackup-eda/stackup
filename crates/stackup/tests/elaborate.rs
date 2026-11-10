@@ -2504,3 +2504,118 @@ design demo {{
         "{errors:#?}"
     );
 }
+
+#[test]
+fn package_models_export_with_their_source_and_the_library_shapes() {
+    let fx = Fixture::new(
+        "models",
+        &[
+            (
+                "board.kdl",
+                r#"
+use "@stackup/module"
+design board {
+    place module U1
+    place module U2
+}
+"#,
+            ),
+            (
+                "stackup/module.kdl",
+                r#"
+part module {
+    reference U
+    pin A passive
+    package lga footprint="RF_Module:Land" {
+        model "stackup.3dshapes/Body.step" offset="-7.7 -10.25 0"
+        model kicad="RF_Module.3dshapes/Shield.step"
+        pad A 1
+    }
+}
+"#,
+            ),
+            ("stackup/stackup.3dshapes/Body.step", "ISO-10303-21;"),
+        ],
+    );
+    let (lib, loaded) = Library::load(
+        &fx.dir.join("board.kdl"),
+        &Prefixes::single("stackup", fx.dir.join("stackup")),
+    );
+    assert!(loaded.is_empty(), "{}", loaded.render());
+    let (file, design) = lib.designs()[0];
+    let model = elaborate(&lib, file, design);
+    let (netlist, report) = netlist::kicad(&lib, &model);
+    assert!(report.is_empty(), "{}", report.render());
+    let shapes = fx.dir.join("stackup/stackup.3dshapes").canonicalize().unwrap();
+    assert!(netlist.contains(&format!("(shapes \"{}\")", shapes.display())), "{netlist}");
+    let spec = format!(
+        "project:stackup.3dshapes/Body.step|-7.7 -10.25 0|0 0 0|{};kicad:RF_Module.3dshapes/Shield.step|0 0 0|0 0 0",
+        shapes.join("Body.step").display()
+    );
+    assert_eq!(netlist.matches(&spec).count(), 2, "{netlist}");
+}
+
+#[test]
+fn a_model_file_that_is_not_there_is_an_error_where_it_is_named() {
+    let fx = Fixture::new(
+        "missing-model",
+        &[(
+            "board.kdl",
+            r#"
+part module {
+    pin A passive
+    package lga footprint="RF_Module:Land" {
+        model "stackup.3dshapes/Gone.step"
+        pad A 1
+    }
+}
+"#,
+        )],
+    );
+    let (_, loaded) = Library::load(&fx.dir.join("board.kdl"), &Prefixes::default());
+    let rendered = loaded.render();
+    assert!(loaded.has_errors(), "{rendered}");
+    assert!(rendered.contains("no 3D model at") && rendered.contains("Gone.step"), "{rendered}");
+}
+
+#[test]
+fn two_bodies_cannot_share_a_name_on_the_board() {
+    let fx = Fixture::new(
+        "model-clash",
+        &[
+            (
+                "board.kdl",
+                r#"
+part a {
+    reference U
+    pin A passive
+    package x footprint="L:A" {
+        model "one/Body.step"
+        pad A 1
+    }
+}
+part b {
+    reference U
+    pin A passive
+    package x footprint="L:B" {
+        model "two/Body.step"
+        pad A 1
+    }
+}
+design board {
+    place a U1
+    place b U2
+}
+"#,
+            ),
+            ("one/Body.step", "one"),
+            ("two/Body.step", "two"),
+        ],
+    );
+    let (lib, loaded) = Library::load(&fx.dir.join("board.kdl"), &Prefixes::default());
+    assert!(loaded.is_empty(), "{}", loaded.render());
+    let (file, design) = lib.designs()[0];
+    let model = elaborate(&lib, file, design);
+    let (_, report) = netlist::kicad(&lib, &model);
+    assert!(report.render().contains("both would be stackup.3dshapes/Body.step"), "{}", report.render());
+}

@@ -75,7 +75,7 @@ def sync(board_path: Path, force: bool = False) -> str:
     # and `SaveBoard` writes it back unless told to skip settings, so a class set here persists
     # the way one set in the editor does.
     board = pcbnew.LoadBoard(str(board_path))
-    outcome = apply_module.apply(board, components, classes)
+    outcome = apply_module.apply(board, components, classes, netlist.shape_dirs(text))
 
     pcbnew.SaveBoard(str(board_path), board)
     return outcome.summary()

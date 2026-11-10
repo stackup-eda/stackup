@@ -296,6 +296,7 @@ pub enum PackageItem {
     Meta(Meta),
     Order(Order),
     Pad(Pad),
+    Model(Model3d),
 }
 
 impl Package {
@@ -324,6 +325,35 @@ impl Package {
             _ => None,
         })
     }
+
+    pub fn models(&self) -> impl Iterator<Item = &Model3d> {
+        self.items.iter().filter_map(|i| match i {
+            PackageItem::Model(m) => Some(m),
+            _ => None,
+        })
+    }
+}
+
+/// `model "<file>" [offset="x y z"] [rotate="x y z"]` or `model kicad="<Lib>.3dshapes/<file>" …`
+///
+/// The 3D body a land is drawn with, where the land's own `(model …)` is wrong or names a file
+/// KiCad never shipped. A file is relative to the declaring `.kdl` file and travels with the board;
+/// `kicad=` names one under the KiCad install's 3D library. Offsets are millimetres and rotations
+/// degrees, in KiCad's 3D frame (Y up).
+#[derive(Clone, Debug, PartialEq)]
+pub struct Model3d {
+    pub source: ModelSource,
+    pub offset: [f64; 3],
+    pub rotate: [f64; 3],
+    pub span: Span,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub enum ModelSource {
+    /// Relative to the declaring file.
+    File(String),
+    /// Relative to the KiCad install's 3D model directory.
+    Kicad(String),
 }
 
 /// `pad <pin> <label>`. A label is text even when it looks like a number: `4` and `A1` are both

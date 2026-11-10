@@ -216,7 +216,7 @@ def _sync(board):
     classes = _netlist.classes(text)
     if not components:
         raise _board_config.SyncError("the design has no parts in it", str(link.file))
-    return _apply.apply(board, components, classes)
+    return _apply.apply(board, components, classes, _netlist.shape_dirs(text))
 
 
 def _icons(plugin, stem: str) -> None:
