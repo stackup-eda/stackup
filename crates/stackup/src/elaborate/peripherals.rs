@@ -59,10 +59,10 @@ impl Builder<'_> {
             };
             let mut values = HashMap::new();
             for (line, terminal) in from {
-                if let Terminal::Pin { inst: owner, pin } = terminal {
-                    if *owner == inst {
-                        values.insert(line.clone(), pin.clone());
-                    }
+                if let Terminal::Pin { inst: owner, pin } = terminal
+                    && *owner == inst
+                {
+                    values.insert(line.clone(), pin.clone());
                 }
             }
             values.insert("package".into(), package.unwrap_or_default());
