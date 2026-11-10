@@ -496,9 +496,18 @@ design board {
     assert_eq!(model.nc.len(), 2, "each declared pin once");
     let (netlist, report) = netlist::kicad(&lib, &model);
     assert!(report.is_empty(), "{}", report.render());
-    assert!(netlist.contains("(name \"unconnected-(U1-B-Pad2)\")"), "{netlist}");
-    assert!(netlist.contains("(name \"unconnected-(U2-B-Pad2)\")"), "{netlist}");
-    assert!(netlist.contains("(pintype bidirectional+no_connect)"), "{netlist}");
+    assert!(
+        netlist.contains("(name \"unconnected-(U1-B-Pad2)\")"),
+        "{netlist}"
+    );
+    assert!(
+        netlist.contains("(name \"unconnected-(U2-B-Pad2)\")"),
+        "{netlist}"
+    );
+    assert!(
+        netlist.contains("(pintype bidirectional+no_connect)"),
+        "{netlist}"
+    );
     assert_eq!(netlist.matches("+no_connect").count(), 2, "{netlist}");
     // A pin nothing declares is only unconnected, and stays out of the netlist.
     assert!(!netlist.contains("-GND-"), "{netlist}");
@@ -2463,8 +2472,9 @@ design demo {{
     // Unshared: SWCLK and SCL on one pin, under two of its names.
     let (errors, _) = messages("pin-twice", "");
     assert!(
-        errors.iter().any(|m| m.contains("`mcu.PA14` is used 2 times (`swclk=PA14`, `scl=PB6`), under 2 of its names")
-            && m.contains("share mcu.PA14 note=")),
+        errors.iter().any(|m| m.contains(
+            "`mcu.PA14` is used 2 times (`swclk=PA14`, `scl=PB6`), under 2 of its names"
+        ) && m.contains("share mcu.PA14 note=")),
         "{errors:#?}"
     );
     assert_eq!(errors.len(), 1, "{errors:#?}");
@@ -2475,7 +2485,10 @@ design demo {{
             &format!("pin-shared-{name}"),
             &format!(r#"share mcu.{name} note="SWD for the first flash; SCL once firmware runs""#),
         );
-        assert!(errors.is_empty() && warnings.is_empty(), "{errors:#?} {warnings:#?}");
+        assert!(
+            errors.is_empty() && warnings.is_empty(),
+            "{errors:#?} {warnings:#?}"
+        );
     }
 
     // A `once` pin named twice under one name: a second output from PA0.
@@ -2484,7 +2497,8 @@ design demo {{
         "connect output {\n        from mcu.PA0\n        to s.SCL\n    }",
     );
     assert!(
-        errors.iter().any(|m| m.contains("`mcu.PA0` is used 2 times (`mcu.PA0`, `mcu.PA0`), and it is a `once` pin")),
+        errors.iter().any(|m| m
+            .contains("`mcu.PA0` is used 2 times (`mcu.PA0`, `mcu.PA0`), and it is a `once` pin")),
         "{errors:#?}"
     );
 
@@ -2496,11 +2510,15 @@ design demo {{
     share mcu.PA14 note="SWD for the first flash; SCL once firmware runs""#,
     );
     assert!(
-        warnings.iter().any(|m| m.contains("`mcu.PA1` is shared, but no link uses it")),
+        warnings
+            .iter()
+            .any(|m| m.contains("`mcu.PA1` is shared, but no link uses it")),
         "{warnings:#?}"
     );
     assert!(
-        errors.iter().any(|m| m.contains("`mcu.PA1` is declared both shared and no-connect")),
+        errors
+            .iter()
+            .any(|m| m.contains("`mcu.PA1` is declared both shared and no-connect")),
         "{errors:#?}"
     );
 }
@@ -2546,8 +2564,15 @@ part module {
     let model = elaborate(&lib, file, design);
     let (netlist, report) = netlist::kicad(&lib, &model);
     assert!(report.is_empty(), "{}", report.render());
-    let shapes = fx.dir.join("stackup/stackup.3dshapes").canonicalize().unwrap();
-    assert!(netlist.contains(&format!("(shapes \"{}\")", shapes.display())), "{netlist}");
+    let shapes = fx
+        .dir
+        .join("stackup/stackup.3dshapes")
+        .canonicalize()
+        .unwrap();
+    assert!(
+        netlist.contains(&format!("(shapes \"{}\")", shapes.display())),
+        "{netlist}"
+    );
     let spec = format!(
         "project:stackup.3dshapes/Body.step|-7.7 -10.25 0|0 0 0|{};kicad:RF_Module.3dshapes/Shield.step|0 0 0|0 0 0",
         shapes.join("Body.step").display()
@@ -2575,7 +2600,10 @@ part module {
     let (_, loaded) = Library::load(&fx.dir.join("board.kdl"), &Prefixes::default());
     let rendered = loaded.render();
     assert!(loaded.has_errors(), "{rendered}");
-    assert!(rendered.contains("no 3D model at") && rendered.contains("Gone.step"), "{rendered}");
+    assert!(
+        rendered.contains("no 3D model at") && rendered.contains("Gone.step"),
+        "{rendered}"
+    );
 }
 
 #[test]
@@ -2617,5 +2645,11 @@ design board {
     let (file, design) = lib.designs()[0];
     let model = elaborate(&lib, file, design);
     let (_, report) = netlist::kicad(&lib, &model);
-    assert!(report.render().contains("both would be stackup.3dshapes/Body.step"), "{}", report.render());
+    assert!(
+        report
+            .render()
+            .contains("both would be stackup.3dshapes/Body.step"),
+        "{}",
+        report.render()
+    );
 }

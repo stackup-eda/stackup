@@ -1089,9 +1089,10 @@ impl<'a> Builder<'a> {
                     let file = self.frames[frame].file;
                     for pin in &s.pins {
                         match self.resolve(frame, pin) {
-                            Ok(Resolved::Pin(i, p)) => self
-                                .shared
-                                .push((Terminal::Pin { inst: i, pin: p }, file, s.span)),
+                            Ok(Resolved::Pin(i, p)) => {
+                                self.shared
+                                    .push((Terminal::Pin { inst: i, pin: p }, file, s.span))
+                            }
                             Ok(_) => self.error(file, s.span, format!("`{pin}` is not a pin")),
                             Err(e) => self.error(file, s.span, e),
                         }
@@ -2631,7 +2632,11 @@ impl<'a> Builder<'a> {
                 .filter(|u| u.inst == *inst && &u.pin == pin)
                 .count();
             if count < 2 {
-                let users = if count == 0 { "no link uses it" } else { "only one link uses it" };
+                let users = if count == 0 {
+                    "no link uses it"
+                } else {
+                    "only one link uses it"
+                };
                 self.warning(
                     *file,
                     *span,

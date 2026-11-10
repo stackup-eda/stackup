@@ -1250,7 +1250,10 @@ impl Cx {
         // The note is the point: sharing a pin is deliberate, and the reason is what a reader
         // needs to check it.
         let Some(note) = note else {
-            self.error(span(n), "`share` needs a `note=` saying why the pin is shared");
+            self.error(
+                span(n),
+                "`share` needs a `note=` saying why the pin is shared",
+            );
             return None;
         };
         Some(Share {

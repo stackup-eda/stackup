@@ -364,7 +364,10 @@ fn nets(lib: &Library, model: &Model, report: &mut Report) -> List {
         let Some(labels) = pads.get(inst).and_then(|p| p.get(pin)) else {
             continue;
         };
-        let designator = model.instances[*inst].designator.clone().unwrap_or_default();
+        let designator = model.instances[*inst]
+            .designator
+            .clone()
+            .unwrap_or_default();
         let kind = kinds
             .get(inst)
             .and_then(|k| k.get(pin))
@@ -374,7 +377,10 @@ fn nets(lib: &Library, model: &Model, report: &mut Report) -> List {
             code += 1;
             let mut entry = List::named("net");
             entry.field("code", code.to_string());
-            entry.field("name", format!("unconnected-({designator}-{pin}-Pad{label})"));
+            entry.field(
+                "name",
+                format!("unconnected-({designator}-{pin}-Pad{label})"),
+            );
             entry.field("class", "Default");
             let mut node = List::named("node");
             node.field("ref", &designator);

@@ -464,9 +464,15 @@ fn share() {
         share.pins.iter().map(|p| p.to_string()).collect::<Vec<_>>(),
         ["mcu.PA14"]
     );
-    assert_eq!(share.note, "SWCLK for the first flash; SCL once firmware runs");
+    assert_eq!(
+        share.note,
+        "SWCLK for the first flash; SCL once firmware runs"
+    );
     assert_eq!(emit(&file), text);
-    one_error("design d { share note=\"why\" }", "`share` needs at least one pin");
+    one_error(
+        "design d { share note=\"why\" }",
+        "`share` needs at least one pin",
+    );
     one_error(
         "design d { share mcu.PA14 }",
         "`share` needs a `note=` saying why the pin is shared",
@@ -896,10 +902,15 @@ fn package_models_round_trip() {
 #[test]
 fn a_model_names_one_body_with_three_numbers() {
     let part = |model: &str| {
-        format!("part p {{\n    pin A passive\n    package x footprint=\"L:F\" {{\n        {model}\n        pad A 1\n    }}\n}}\n")
+        format!(
+            "part p {{\n    pin A passive\n    package x footprint=\"L:F\" {{\n        {model}\n        pad A 1\n    }}\n}}\n"
+        )
     };
     one_error(&part("model"), "`model` needs a file");
     one_error(&part(r#"model "a.step" kicad="b.step""#), "not both");
     one_error(&part(r#"model "a.step" offset="1 2""#), "three numbers");
-    one_error(&part(r#"model "a.step" scale="2 2 2""#), "no `scale=` property");
+    one_error(
+        &part(r#"model "a.step" scale="2 2 2""#),
+        "no `scale=` property",
+    );
 }
