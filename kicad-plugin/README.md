@@ -2,7 +2,7 @@
 
 The PCB editor has three stackup actions:
 
-- **Sync PCB from stackup** exports the linked KDL design and updates electrical footprints, pads, and nets. Existing placement, routing, and KiCad `board_only` footprints are retained. A pad the KDL declares `nc` is cleared to no net; a pad the KDL does not mention keeps its net.
+- **Sync PCB from stackup** exports the linked KDL design and updates electrical footprints, pads, and nets. Existing placement, routing, and KiCad `board_only` footprints are retained. A pad the KDL declares `nc` is cleared to no net; a pad the KDL does not mention keeps its net. A part placed with `hand=#true` gets KiCad's *Exclude from position files* and *Exclude from BOM* attributes, so the position file and any assembly BOM built from the board, such as a fab plugin's export, leave out what `stackup bom` marks DNP. The sync removes only attributes it added, so a land that excludes itself (a mounting hole, a test point, a fiducial) keeps them.
 - **Repeat arrangement** copies selected footprints and connected copper to sibling instances identified by their `Stackup Path` fields. When no one selected part is the anchor (a block with no part of its own), it asks which part to measure from.
 - **Place at anchor pad** uses `Stackup Anchor`, `Stackup Spot`, `Stackup Pours`, and `Stackup Vias` fields already on footprints. KDL `anchor=host.PIN` on a part exports the host's physical pad to `Stackup Anchor`; optional `spot="dx dy rotation"` exports an exact offset. KDL does not emit pours or vias yet.
 

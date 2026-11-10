@@ -75,6 +75,9 @@ class Component:
     #: library changed, a drawing never made, a bundled land with no install to name one from. Read
     #: it with `parse_models`.
     models: str = ""
+    #: Placed with `hand=#true`: bought with the board but installed by hand after assembly, so the
+    #: BOM marks it DNP and the sync keeps it out of KiCad's position (pick-and-place) files.
+    hand: bool = False
     #: pad number -> net name; `""` for a pad the design declares no-connect, which the sync clears
     #: rather than leaving on whatever an earlier revision wired it to. A pad that is not here at
     #: all is one the design says nothing about.
@@ -164,6 +167,8 @@ def parse(text: str) -> dict[str, Component]:
                 component.vias = _value(prop, "value")
             elif name == "Stackup Models":
                 component.models = _value(prop, "value")
+            elif name == "Stackup Hand":
+                component.hand = _value(prop, "value") == "yes"
         components[ref] = component
 
     # Connectivity is stored per net; the board is updated per pad, so invert it here. A declared
